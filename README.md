@@ -53,7 +53,7 @@ Use the `preprocess_data` command to perform the pitch perturbation strategy req
 preprocess_data /data/train_audios /data/train_prep --csv data/train.csv --workers 10
 ```
 
-This command will find all files with audio extension inside the `/data/train_audios` and do the preprocessing. Resulting perturbed audios and F0 contours will be saved at `/data/train_prep`. A csv files with all the important paths will be created at `data/train.csv`. We recommend you set `--workers` to an appropriate value to speed up computation. 
+This command will find all files with an audio extension inside the `/data/train_audios` folder and do the preprocessing. Resulting perturbed audios and F0 contours will be saved at `/data/train_prep`. A csv file with all the important paths will be created at `data/train.csv`. We recommend you set `--workers` to an appropriate value to speed up computation. 
 
 Additionally, you can use the `--strength` argument to change the strength of the pitch perturbation. The default value is 5 semitones.
 

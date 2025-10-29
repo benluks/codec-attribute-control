@@ -1,8 +1,8 @@
 data:
   class_path: pitchflower.dataset.AudioDataModule
   init_args:
-    train_path: data/train_filtered.csv
-    val_path: data/dev_clean.csv
+    train_path: data/train_filtered.csv # replace with you own
+    val_path: data/dev_clean.csv # replace with you own
     batch_size: 32
     val_size: 500
     num_samples: 36096
@@ -20,14 +20,14 @@ trainer:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
       init_args:
         monitor: Val/Loss
-        dirpath: /data/anasynth_nonbp/dtorres/pitchflower_open/checkpoints # replace with you own path
+        dirpath: /data/pitchflower/checkpoints # replace with you own
         filename: pitchflower_{epoch}_{step}
         save_top_k: 1
         save_last: true
   logger:
     class_path: pytorch_lightning.loggers.TensorBoardLogger
     init_args:
-      save_dir: /data/anasynth_nonbp/dtorres/pitchflower_open/logs # replace with you own path
+      save_dir: /data/pitchflower/logs # replace with you own
       name: pitchflower
 
 model:
