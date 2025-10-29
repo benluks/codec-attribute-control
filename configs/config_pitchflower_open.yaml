@@ -1,0 +1,66 @@
+data:
+  class_path: pitchflower.dataset.AudioDataModule
+  init_args:
+    train_path: data/train_filtered.csv
+    val_path: data/dev_clean.csv
+    batch_size: 32
+    val_size: 500
+    num_samples: 36096
+    num_workers: 8
+
+trainer:
+  devices: 1
+  max_epochs: -1
+  max_steps: 800000
+  val_check_interval: 1000
+  accelerator: gpu
+  precision: bf16-mixed
+  gradient_clip_val: 1.0
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        monitor: Val/Loss
+        dirpath: /data/anasynth_nonbp/dtorres/pitchflower_open/checkpoints # replace with you own path
+        filename: pitchflower_{epoch}_{step}
+        save_top_k: 1
+        save_last: true
+  logger:
+    class_path: pytorch_lightning.loggers.TensorBoardLogger
+    init_args:
+      save_dir: /data/anasynth_nonbp/dtorres/pitchflower_open/logs # replace with you own path
+      name: pitchflower
+
+model:
+  autoencoder:
+    class_path: pitchflower.modules.AutoEncoderRVQ
+    init_args:
+      hidden_dim: 512
+      n_convs: [6, 6]
+      strides: [1, 2]
+      stride_kernel_sizes: [null, 7]
+      mels: 100
+      n_q: 8
+      codebook_size: 512
+      codebook_dim: 256
+      semantic_dim: 768
+  flow_matcher:
+    class_path: pitchflower.flow_matcher.FlowMatcher
+    init_args:
+      sigma_min: 0.0001
+      mels: 100
+      channels: 256
+      n_convs: [8, 8, 8, 8]
+      strides: [1, 1, 1, 2]
+  mel_transform:
+    sample_rate: 24000
+    n_fft: 1024
+    n_mels: 100
+    hop_length: 256
+    center: true
+    power: 1.0
+  loss_weights:
+    commit_loss: 0.25
+    flow_loss: 1.0
+  lr: 0.0001
+  rvq_dropout: true
+  cfg_proba: 0.1

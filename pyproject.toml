@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pitchflower"
+version = "0.1.0"
+description = "PitchFlower: A neural audio codec with pitch controllability"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "CC-BY-NC-SA-4.0"
+authors = [
+  { name = "Diego Torres, Axel Roebel, Nicolas Obin" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+
+# Core dependencies (inference)
+dependencies = [
+  "einops==0.8.1",
+  "librosa==0.11.0",
+  "numpy==2.2.6",
+  "pandas==2.3.3",
+  "psutil==7.1.0",
+  "pyworld==0.3.5",
+  "rotary-embedding-torch==0.8.9",
+  "soundfile==0.13.1",
+  "torch==2.8.0",
+  "torchaudio==2.8.0",
+  "torchdyn==1.0.6",
+  "vocos==0.1.0"
+]
+
+[project.optional-dependencies]
+train = [
+  "tqdm==4.67.1",
+  "jsonargparse[signatures]>=4.27.7",
+  "omegaconf==2.3.0",
+  "pytorch-lightning==2.5.5",
+  "tensorboard==2.20.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pitchflower*"]
+
+[project.scripts]
+pitchflower = "pitchflower.pitchflower:main"
+preprocess_data = "pitchflower.preprocess_data:main"
+save_pretrained = "pitchflower.save_pretrained:main"
