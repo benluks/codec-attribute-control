@@ -1,8 +1,18 @@
 # 🌸 PitchFlower
 
+<p align="left">
+  <a href="https://arxiv.org/abs/2510.25566">
+    <img src="https://img.shields.io/badge/arXiv-PitchFlower-b31b1b?logo=arxiv&logoColor=white" alt="arXiv">
+  </a>
+  <a href="https://huggingface.co/diegotg343/PitchFlower">
+    <img src="https://img.shields.io/badge/🤗%20HuggingFace-PitchFlower-blue.svg" alt="Hugging Face">
+  </a>
+</p>
+
+
 Official implementation of the paper *PitchFlower: A flow-based neural audio codec with pitch controllability*.
 
-This repository contains the code to do training and inference with our model. A pretrained checkpoint is also available on 🤗 [here](https://huggingface.co/diegotg343/PitchFlower).
+This repository contains the code to do training and inference with our model. A pretrained checkpoint is also available on 🤗.
 
 ## 🧠 Overview
 
