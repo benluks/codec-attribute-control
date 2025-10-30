@@ -80,13 +80,6 @@ save_pretrained /data/checkpoints/last.ckpt /data/inference_checkpoint
 
 You can then use your model in the same way as in the notebook!
 
-## 🧩 Citation
-
-
-## 📜 License
-
-This project is licensed under the [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) license.
-
 ## 🙌 Acknowledgements
 
 We'd like to acknowledge the repositories from which we draw inspiration and parts of the code
@@ -100,3 +93,20 @@ This work has been done in the [Analysis/Synthesis team of the STMS laboratory](
 ## 📫 Contact
 
 For questions or collaboration opportunities, feel free to reach out: dtorres@ircam.fr
+
+## 🧩 Citation
+
+```bibtex
+@misc{pitchflower,
+      title={PitchFlower: A flow-based neural audio codec with pitch controllability}, 
+      author={Diego Torres and Axel Roebel and Nicolas Obin},
+      year={2025},
+      eprint={2510.25566},
+      archivePrefix={arXiv},
+      url={https://arxiv.org/abs/2510.25566}, 
+}
+```
+
+## 📜 License
+
+This project is licensed under the [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) license.
