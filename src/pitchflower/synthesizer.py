@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torchaudio.transforms import MelSpectrogram
+from huggingface_hub import hf_hub_download
 
 from pitchflower.modules import AutoEncoderRVQ
 from pitchflower.flow_matcher import FlowMatcher
@@ -51,11 +52,10 @@ class PitchFlowerSynthesizer(nn.Module):
         return mels
 
     @classmethod
-    def from_pretrained(cls, ckpt_path):
-        ckpt_path = Path(ckpt_path)
-        autoencoder_path = ckpt_path/'autoencoder.pt'
-        flow_path = ckpt_path/'flow_matcher.pt'
-        config_path = ckpt_path/'config.json'
+    def from_pretrained(cls, repo_id: str):
+        config_path = hf_hub_download(repo_id=repo_id, filename="config.json")
+        autoencoder_path = hf_hub_download(repo_id=repo_id, filename='autoencoder.pt')
+        flow_path = hf_hub_download(repo_id=repo_id, filename='flow_matcher.pt')
 
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -71,4 +71,4 @@ class PitchFlowerSynthesizer(nn.Module):
         # Load Mel
         mel_transform = MelSpectrogram(**config['mel_transform'])
 
-        return cls(autoencoder, flow_matcher, mel_transform)
+        return cls(autoencoder, flow_matcher, mel_transform).eval()
