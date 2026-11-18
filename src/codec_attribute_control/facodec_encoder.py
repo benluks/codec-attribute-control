@@ -64,6 +64,24 @@ class FACodecContentEncoder(ContentEncoder):
             lengths = torch.full((b,), n, dtype=torch.long, device=waveforms.device)
         if lengths.shape != (b,) or torch.any(lengths <= 0) or torch.any(lengths > n):
             raise ValueError("Invalid waveform lengths")
+        if hasattr(self.codec, "encode_batch"):
+            frame = self.codec.encode_batch(waveforms, lengths)
+            frame_lengths = (lengths.to(frame.combined.device) + HOP - 1) // HOP
+            if frame.combined.shape[0] != b:
+                raise ValueError("Batched FACodec returned incorrect batch dimension")
+            def padded(field):
+                values = getattr(frame, field).transpose(1, 2).clone()
+                valid = torch.arange(values.shape[1], device=values.device)[None, :] < frame_lengths[:, None]
+                return values.masked_fill(~valid.unsqueeze(-1), 0)
+            combined = padded("combined")
+            streams = {name: padded(name) for name in ("prosody", "content", "residual")}
+            return FACodecFeatures(
+                values=combined, lengths=frame_lengths, feature_dim=self.FEATURE_DIM,
+                representation_type="continuous", temporal_granularity="frame",
+                backend="facodec", model_name="amphion/naturalspeech3_facodec",
+                layer=None, frame_hz=self.frame_hz, streams=streams,
+                speaker=frame.speaker, codes=frame.codes,
+            )
         frames = [self.codec.encode(waveforms[i, :int(lengths[i])]) for i in range(b)]
         def padded(field):
             return pad_sequence(

@@ -64,6 +64,36 @@ class FACodec(torch.nn.Module):
             raise RuntimeError(f"Expected six quantizer codebooks, got {tuple(ids.shape)}")
         return CodecFrame(total, parts[0], parts[1], parts[2], speaker, ids)
 
+
+    @torch.inference_mode()
+    def encode_batch(self, waveforms: torch.Tensor, lengths: torch.Tensor) -> CodecFrame:
+        """Encode [B, samples] in one GPU forward pass with masked timbre pooling.
+
+        Right padding is excluded from timbre attention and pooling. Convolutional
+        boundary effects near the end of shorter recordings can still differ from
+        independently encoded, unpadded inputs.
+        """
+        if waveforms.ndim != 2 or lengths.shape != (waveforms.shape[0],):
+            raise ValueError("Expected waveforms [B, samples] and lengths [B]")
+        if torch.any(lengths <= 0) or torch.any(lengths > waveforms.shape[1]):
+            raise ValueError("Invalid waveform lengths")
+        device = next(self.encoder.parameters()).device
+        lengths = lengths.to(device=device, dtype=torch.long)
+        waveforms = waveforms.to(device=device, dtype=torch.float32)
+        padded_samples = ((waveforms.shape[1] + HOP - 1) // HOP) * HOP
+        waveforms = torch.nn.functional.pad(waveforms, (0, padded_samples - waveforms.shape[1]))
+        frames = (lengths + HOP - 1) // HOP
+        enc = self.encoder(waveforms.unsqueeze(1))
+        if enc.shape[-1] != padded_samples // HOP:
+            raise RuntimeError("Unexpected FACodec encoder frame count")
+        total, ids, _, parts = self.decoder.quantize(enc)
+        if len(parts) != 3 or ids.shape[0] != 6:
+            raise RuntimeError("Unexpected FACodec quantizer contract")
+        valid = torch.arange(enc.shape[-1], device=device)[None, :] < frames[:, None]
+        timbre = self.decoder.timbre_encoder(enc.transpose(1, 2), valid, None)
+        speaker = (timbre * valid.unsqueeze(-1)).sum(dim=1) / frames.unsqueeze(1)
+        return CodecFrame(total, parts[0], parts[1], parts[2], speaker, ids)
+
     @torch.inference_mode()
     def decode(self, frame: CodecFrame, delta: torch.Tensor | None = None) -> torch.Tensor:
         """Resynthesize with only continuous prosody delta changed.
