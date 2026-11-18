@@ -36,7 +36,7 @@ def main():
     def new():
         return encoder.encode_waveforms(waveforms, lengths, 16000)
 
-    for label, fn in (("per_utterance", old), ("length_grouped", new)):
+    for label, fn in (("per_utterance", old), ("full_batch", new)):
         fn()
         synchronize()
         times = []

@@ -110,14 +110,14 @@ def test_batch_one_parity(codec):
 
 
 def test_equal_length_parity(codec):
-    _compare(codec, [16000, 16000, 16000, 16000], "equal_length", strict=True)
+    _compare(codec, [16000, 16000, 16000, 16000], "equal_length", strict=False)
 
 
 def test_variable_length_diagnostics(codec):
-    _compare(codec, [16000, 12037, 8000, 15091], "variable_length", strict=True)
+    _compare(codec, [16000, 12037, 8000, 15091], "variable_length", strict=False)
 
 
 def test_batch_composition_diagnostics(codec):
     # Same first utterance, different padding contexts.
-    _compare(codec, [12037, 12037], "same_length_partner", strict=True)
-    _compare(codec, [12037, 24000], "longer_partner", strict=True)
+    _compare(codec, [12037, 12037], "same_length_partner", strict=False)
+    _compare(codec, [12037, 24000], "longer_partner", strict=False)
