@@ -1,71 +1,39 @@
 # Codec Attribute Control
 
-FACodec post-quantization prosody F0 probing and continuous intervention.
+**Question:** What speech attributes are accessible in a frozen neural speech codec, and can we eventually manipulate them independently?
 
-## quick-convert integration
+The first experiment probes **pitch (F0)** in the **post-quantization prosody representation** of pretrained Amphion NaturalSpeech 3 FACodec. We freeze FACodec and train a single linear projection to predict framewise pitch. A successful probe shows that pitch information is *linearly accessible*; it does **not** establish causal control or disentanglement.
 
-The experiment uses `quick_convert.data.BaseDataset` for discovery,
-loading, mono downmix and resampling. Pitch backends follow the
-`quick_convert.components.features.f0.base.F0Extractor` contract:
+**Pipeline:** 16 kHz speech → frozen FACodec prosody features → linear F0 head. In parallel, pretrained JDC produces aligned 80 Hz F0 labels in Hz. We normalize voiced log2 F0 per recording, then optimize masked mean squared error over voiced frames.
 
-- `JDCF0Extractor(F0Extractor)`: default, pretrained JDC, using the
-  Plachtaa/FAcodec 24 kHz mel preprocessing and checkpoint.
-- `quick_convert.components.features.f0.yaapt.YAAPTF0Extractor`:
-  existing optional fallback, imported directly.
-
-No pYIN implementation or dependency. F0 extractors return physical Hz;
-normalizing voiced log2 F0 is a separate label transform.
-
-## Setup
+## Quick start
 
 ```bash
-uv sync --group dev
+uv sync --group dev --extra train --extra facodec
 git submodule update --init
-uv sync --extra train --extra facodec
+uv run --extra train --extra facodec train-probe data_root=/path/to/collections
 ```
 
-The default JDC checkpoint is read from the Amphion source tree at
-`models/codec/facodec/modules/JDC/bst.t7`.
-Override using `f0.checkpoint_path=/path/to/bst.t7` when needed.
+`data_root` is the parent of `librispeech/LibriSpeech`. The JDC checkpoint is read from the Amphion source tree (`models/codec/facodec/modules/JDC/bst.t7`). FACodec pretrained weights are also required. The default training split is `train-clean-100`, with `dev-clean` for validation.
 
-## Run
+For faster repeated training, precompute JDC targets with Quick Convert's existing precompute pipeline, then switch one config group:
 
 ```bash
-uv run train-probe dataset.root=/path/to/speech
-# Intervention CLI deferred until the QC waveform generator is available
-uv run pytest -q
+uv run --extra train --extra facodec precompute-f0 data_root=/path/to/collections
+uv run --extra train --extra facodec train-probe data_root=/path/to/collections f0=cached
 ```
 
-FACodec encodes mixed-length batches by default. It splits large codec
-forwards by padded audio size while keeping the full batch for the F0 head. Set
-`system.encoder.batched=false` to use per-utterance inference.
-Run the codec parity checks with the official pretrained weights:
+The default cache is **`./outputs/precomputed/f0/jdc` after PR #15**; until that fix is merged, pass `f0_cache_root=./outputs/precomputed/f0/jdc` to both commands. See [the experiment guide](docs/f0-probe.md) for exact cache behavior, configuration, metrics, and limitations.
+
+## Validation and scope
 
 ```bash
+uv run --extra train --extra facodec pytest -q
 FACODEC_PARITY=1 uv run --extra train --extra facodec pytest -q tests/test_facodec_parity.py
 ```
 
-For quick-convert's existing YAAPT fallback:
+FACodec supports mixed-length batches; set `system.encoder.batched=false` to compare per-utterance inference. YAAPT is an optional alternative pitch backend, not the default JDC supervision.
 
-```bash
-uv run --extra yaapt train-probe dataset.root=/path/to/speech f0.backend=yaapt
-```
+**Current scope:** frozen representation probing, not pitch intervention or waveform editing. The JDC checkpoint matches the upstream Plachtaa/Amphion artifact, but that alone does not prove exact parity with FACodec's original training labels.
 
-The linear probe predicts a voiced log2 F0 recording-z-score from the
-**post-quantization prosody contribution** of frozen Amphion NaturalSpeech 3
-FACodec. Content, residual and speaker conditioning stay unchanged.
-Recording normalization is currently an approximation to Plachtaa's
-per-training-segment target.
-
-The JDC checkpoint Git hash matches between Amphion and Plachtaa, but this
-does not establish training-label parity with the NS3 codec. Absolute pitch
-shifts remain exploratory because z-score normalization erases constant
-log-pitch offsets.
-
-See [quick-convert reuse and gaps](docs/quick-convert-gaps.md).
-
-## Status
-
-Training enters QC's `TrainingPipeline.run()` via `LightningTrainer` and
-a project-specific `BaseTrainingModule`. The pretrained FACodec parity
-tests cover quantized streams, code IDs and speaker embeddings.
+More detail: [F0 probe methodology and reproducibility](docs/f0-probe.md) · [Quick Convert reuse and gaps](docs/quick-convert-gaps.md).
