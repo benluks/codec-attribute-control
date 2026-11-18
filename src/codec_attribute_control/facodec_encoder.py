@@ -4,10 +4,13 @@ from pathlib import Path
 
 import torch
 import torchaudio
+from quick_convert.components.encoders.content.base import (
+    ContentEncoder,
+    ContentFeatures,
+)
 from torch.nn.utils.rnn import pad_sequence
 
-from quick_convert.components.encoders.content.base import ContentEncoder, ContentFeatures
-from .facodec import FACodec, HOP, SAMPLE_RATE
+from .facodec import HOP, SAMPLE_RATE, FACodec
 
 
 @dataclass
@@ -37,13 +40,14 @@ class FACodecFeatures(ContentFeatures):
 class FACodecContentEncoder(ContentEncoder):
     """Adapter for the frozen upstream codec; all streams survive encoding.
 
-    Currently invokes the upstream single-recording API per item. This is
-    intentionally not advertised as vectorized FACodec execution.
+    Runs a single padded batch through the frozen codec and masks invalid output frames.
     """
     FEATURE_DIM = 256
 
-    def __init__(self, device="cpu", codec=None):
+    def __init__(self, device=None, codec=None, *, batched=True):
+        device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         super().__init__(device=device)
+        self.batched = batched
         self.codec = codec if codec is not None else FACodec(device=str(self.device))
 
     @property
@@ -64,6 +68,31 @@ class FACodecContentEncoder(ContentEncoder):
             lengths = torch.full((b,), n, dtype=torch.long, device=waveforms.device)
         if lengths.shape != (b,) or torch.any(lengths <= 0) or torch.any(lengths > n):
             raise ValueError("Invalid waveform lengths")
+        if self.batched and hasattr(self.codec, "encode_batch"):
+            # Standard padded batch: one codec forward, irrespective of lengths.
+            # Explicitly clear invalid samples even if the collator used nonzero padding.
+            positions = torch.arange(n, device=waveforms.device)
+            clean = waveforms.masked_fill(positions[None, :] >= lengths.to(waveforms.device)[:, None], 0)
+            frame = self.codec.encode_batch(clean, lengths)
+            frame_lengths = (lengths.to(frame.combined.device) + HOP - 1) // HOP
+            if frame.combined.shape[0] != b:
+                raise ValueError("Batched FACodec returned incorrect batch dimension")
+            def padded(field):
+                values = getattr(frame, field).transpose(1, 2).clone()
+                valid = torch.arange(values.shape[1], device=values.device)[None, :] < frame_lengths[:, None]
+                return values.masked_fill(~valid.unsqueeze(-1), 0)
+            combined = padded("combined")
+            streams = {name: padded(name) for name in ("prosody", "content", "residual")}
+            codes = frame.codes.clone()
+            valid = torch.arange(codes.shape[-1], device=codes.device)[None, :] < frame_lengths[:, None]
+            codes = codes.masked_fill(~valid.unsqueeze(0), 0)
+            return FACodecFeatures(
+                values=combined, lengths=frame_lengths, feature_dim=self.FEATURE_DIM,
+                representation_type="continuous", temporal_granularity="frame",
+                backend="facodec", model_name="amphion/naturalspeech3_facodec",
+                layer=None, frame_hz=self.frame_hz, streams=streams,
+                speaker=frame.speaker, codes=codes,
+            )
         frames = [self.codec.encode(waveforms[i, :int(lengths[i])]) for i in range(b)]
         def padded(field):
             return pad_sequence(
