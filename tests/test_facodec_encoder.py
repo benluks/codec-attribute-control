@@ -27,7 +27,9 @@ def test_factorized_features():
     assert features.values.shape == (2, 3, 256)
     assert features.prosody.shape == features.values.shape
     assert features.lengths.tolist() == [3, 2]
-    assert torch.all(features.prosody == 1)
+    assert torch.all(features.prosody[0, :3] == 1)
+    assert torch.all(features.prosody[1, :2] == 1)
+    assert torch.all(features.prosody[1, 2:] == 0)
 
 
 def test_sample_rate_validation():
