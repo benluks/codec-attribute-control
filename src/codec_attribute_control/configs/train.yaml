@@ -10,21 +10,25 @@ num_workers: 0
 max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
-feature_dim: 256
 
-f0:
-  backend: jdc
-  checkpoint_path: null
+# The training module expects a batch with audio, aligned f0_hz, and
+# f0_lengths. The current audio dataset does not yet provide these.
+system:
+  _target_: codec_attribute_control.system.F0ProbeSystem
+  encoder:
+    _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
+    device: cpu
+  head:
+    _target_: codec_attribute_control.head.LinearF0Head
+    input_dim: 256
+  freeze_encoder: true
 
 trainer:
   _target_: quick_convert.training.lightning.trainer.LightningTrainer
   module:
     _target_: codec_attribute_control.training.F0ProbeTrainingModule
+    system: ${system}
     optimization: ${optimization}
-    feature_dim: ${feature_dim}
-    f0_backend: ${f0.backend}
-    f0_checkpoint_path: ${f0.checkpoint_path}
-    device: cpu
   train_dataloader_kwargs:
     batch_size: ${batch_size}
     shuffle: true
