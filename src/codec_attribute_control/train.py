@@ -3,18 +3,21 @@ from importlib.resources import files
 from pathlib import Path
 
 import hydra
-from hydra.core.config_store import ConfigStore
+from hydra.core.plugins import Plugins
+from hydra.plugins.search_path_plugin import SearchPathPlugin
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from quick_convert.pipelines.training.pipeline import TrainingPipeline
 from quick_convert.utils.resolvers import register_config_resolvers
 
+class QuickConvertConfigSearchPath(SearchPathPlugin):
+    def manipulate_search_path(self, search_path):
+        config_dir = files("quick_convert").joinpath("configs")
+        search_path.append(provider="quick_convert", path=f"file://{config_dir}")
+
+
+Plugins.instance().register(QuickConvertConfigSearchPath)
 register_config_resolvers()
-ConfigStore.instance().store(
-    group="dataset",
-    name="librispeech",
-    node=OmegaConf.load(files("quick_convert").joinpath("configs/dataset/librispeech.yaml")),
-)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
