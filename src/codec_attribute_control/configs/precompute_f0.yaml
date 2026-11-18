@@ -1,0 +1,18 @@
+defaults:
+  - dataset: librispeech
+  - _self_
+
+data_root: ???
+f0_cache_root: ???
+splits: [train-clean-100, dev-clean]
+batch_size: 8
+num_workers: 4
+device: cuda
+checkpoint_path: null
+overwrite: false
+
+hydra:
+  run:
+    dir: outputs
+  job:
+    chdir: false
