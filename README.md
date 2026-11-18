@@ -36,7 +36,8 @@ uv run train-probe dataset.root=/path/to/speech
 uv run pytest -q
 ```
 
-FACodec encodes mixed-length batches by default. Set
+FACodec encodes mixed-length batches by default. It splits large codec
+forwards by padded audio size while keeping the full batch for the F0 head. Set
 `system.encoder.batched=false` to use per-utterance inference.
 Run the codec parity checks with the official pretrained weights:
 

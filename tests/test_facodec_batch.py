@@ -48,3 +48,23 @@ def test_same_hop_length_groups_and_original_order():
     assert features.codes.shape == (6, 4, 4)
     assert features.speaker.shape == (4, 256)
     assert torch.all(features.prosody[0, 3:] == 0)
+
+
+def test_large_batch_splits_by_padded_samples(monkeypatch):
+    from codec_attribute_control import facodec
+
+    codec = facodec.FACodec.__new__(facodec.FACodec)
+    torch.nn.Module.__init__(codec)
+    dummy = BatchCodec()
+    monkeypatch.setattr(facodec, "MAX_BATCH_PADDED_SAMPLES", 1600)
+    monkeypatch.setattr(codec, "_encode_batch_chunk", dummy.encode_batch)
+    lengths = torch.tensor([400, 401, 1400, 200, 390])
+    features = FACodecContentEncoder(codec=codec).encode_waveforms(
+        torch.randn(5, 1600), lengths
+    )
+    assert dummy.group_sizes == [(2, 600), (1, 1400), (2, 400)]
+    assert features.lengths.tolist() == [2, 3, 7, 1, 2]
+    assert features.codes.shape == (6, 5, 8)
+    assert features.speaker.shape == (5, 256)
+    expected = torch.arange(8) < features.lengths[:, None]
+    assert torch.equal(features.prosody[:, :, 0].bool(), expected)
