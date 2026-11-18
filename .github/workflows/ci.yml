@@ -15,7 +15,11 @@ jobs:
           enable-cache: true
       - name: Install dependencies
         run: uv sync --group dev
-      - name: Ruff
+      - name: Apply Ruff autofixes and formatting
+        run: |
+          uv run ruff check src tests --fix
+          uv run ruff format src tests
+      - name: Ruff (remaining lint errors)
         run: uv run ruff check src tests --output-format github
       - name: Unit tests (no model downloads)
         run: uv run pytest -q
