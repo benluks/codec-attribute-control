@@ -25,14 +25,14 @@ class OnlineF0(nn.Module):
         if isinstance(self.extractor, JDCF0Extractor):
             device = batch.waveforms.device
             lengths = batch.lengths.to(device=device, dtype=torch.long)
-            # Resample each valid waveform before padding: avoids treating
-            # collator padding as actual audio during sample-rate conversion.
-            resampled = [
-                audio_functional.resample(w[:int(n)], SAMPLE_RATE, JDC_SAMPLE_RATE)
-                for w, n in zip(batch.waveforms, lengths.tolist())
-            ]
-            native_lengths = torch.tensor([w.numel() for w in resampled], device=device)
-            padded = torch.nn.utils.rnn.pad_sequence(resampled, batch_first=True)
+            # Resample the entire padded batch in one operation.
+            # Native valid lengths use torchaudio's ceil(input * new / old).
+            padded = audio_functional.resample(batch.waveforms, SAMPLE_RATE, JDC_SAMPLE_RATE)
+            native_lengths = torch.div(
+                lengths * JDC_SAMPLE_RATE + SAMPLE_RATE - 1,
+                SAMPLE_RATE,
+                rounding_mode="floor",
+            )
             raw, raw_lengths = self.extractor.extract_batch(padded, native_lengths, JDC_SAMPLE_RATE)
             frame_lengths = (lengths + HOP - 1) // HOP
             positions = torch.arange(int(frame_lengths.max()), device=raw.device)

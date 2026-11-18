@@ -88,17 +88,13 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
         lengths = lengths.to(device=device, dtype=torch.long)
         if torch.any(lengths <= 0) or torch.any(lengths > waveforms.shape[1]):
             raise ValueError("Invalid waveform lengths")
-        # Construct each mel at its actual length, preserving the per-utterance
-        # centered-STFT boundary treatment before batching the neural network.
-        mels = []
-        for waveform, length in zip(waveforms, lengths.tolist()):
-            mel = self.to_mel(waveform[:length])
-            mels.append((torch.log(mel + 1e-5) + 4.0) / 4.0)
-        frame_lengths = torch.tensor([m.shape[-1] for m in mels], device=device)
-        padded = torch.nn.utils.rnn.pad_sequence(
-            [m.transpose(0, 1) for m in mels], batch_first=True
-        ).transpose(1, 2)
-        f0 = self.model(padded[:, None])[0]
+        # One batched spectrogram and one batched JDC forward pass.
+        # Centered STFT sees zero-padding at the ends of shorter recordings;
+        # compare those boundary frames against independent extraction.
+        mel = self.to_mel(waveforms)
+        mel = (torch.log(mel + 1e-5) + 4.0) / 4.0
+        frame_lengths = torch.div(lengths, JDC_HOP, rounding_mode="floor") + 1
+        f0 = self.model(mel[:, None])[0]
         return f0, frame_lengths
 
     def extract_sample(self, sample):
