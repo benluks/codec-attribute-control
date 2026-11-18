@@ -1,13 +1,20 @@
 """Hydra entry point; QC owns dataset loading and training."""
+from importlib.resources import files
 from pathlib import Path
 
 import hydra
+from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from quick_convert.pipelines.training.pipeline import TrainingPipeline
 from quick_convert.utils.resolvers import register_config_resolvers
 
 register_config_resolvers()
+ConfigStore.instance().store(
+    group="dataset",
+    name="librispeech",
+    node=OmegaConf.load(files("quick_convert").joinpath("configs/dataset/librispeech.yaml")),
+)
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
