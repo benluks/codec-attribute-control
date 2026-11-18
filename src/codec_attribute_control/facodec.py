@@ -24,12 +24,11 @@ class CodecFrame:
 class FACodec(torch.nn.Module):
     def __init__(self, device: str | None = None):
         super().__init__()
-        device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
+        device = "cpu" if device is None else device
         ensure_amphion_importable()
         from Amphion.models.codec.ns3_codec import FACodecDecoder, FACodecEncoder
         from huggingface_hub import hf_hub_download
 
-        self.device = torch.device(device)
         self.encoder = FACodecEncoder(ngf=32, up_ratios=[2, 4, 5, 5], out_channels=256)
         self.decoder = FACodecDecoder(
             in_channels=256, upsample_initial_channel=1024, ngf=32,
@@ -45,7 +44,7 @@ class FACodec(torch.nn.Module):
         ):
             path = hf_hub_download(repo_id=MODEL_ID, filename=filename)
             model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
-            model.to(self.device).eval().requires_grad_(False)
+            model.to(device).eval().requires_grad_(False)
 
     def train(self, mode: bool = True):
         return super().train(False)
