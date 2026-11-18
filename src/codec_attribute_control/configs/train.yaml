@@ -5,6 +5,7 @@ defaults:
   - _self_
 
 data_root: ???
+device: null  # Auto-select CUDA when available, otherwise CPU
 batch_size: 8
 num_workers: 24
 max_epochs: 10
@@ -19,7 +20,7 @@ system:
   _target_: codec_attribute_control.system.F0ProbeSystem
   encoder:
     _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
-    device: null  # Auto-select CUDA when available, otherwise CPU
+    device: ${device}
     batched: true
   head:
     _target_: codec_attribute_control.head.LinearF0Head
