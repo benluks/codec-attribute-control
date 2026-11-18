@@ -7,6 +7,8 @@ import pytest
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
+from codec_attribute_control.amphion_source import ensure_amphion_importable
+from codec_attribute_control.extractors import JDC_CHECKPOINT_RELATIVE
 from codec_attribute_control.f0 import aligned_pitch
 from codec_attribute_control.f0_resource import OnlineF0
 from codec_attribute_control.facodec import HOP, SAMPLE_RATE
@@ -16,7 +18,14 @@ from codec_attribute_control.facodec import HOP, SAMPLE_RATE
     scope="module", params=[(16000, 16000), (12037, 16000)], ids=["equal", "mixed"]
 )
 def jdc_outputs(request):
-    online = OnlineF0()
+    try:
+        source = ensure_amphion_importable()
+    except ImportError as exc:
+        pytest.skip(str(exc))
+    checkpoint = source / JDC_CHECKPOINT_RELATIVE
+    if not checkpoint.is_file():
+        pytest.skip("Pretrained JDC checkpoint is unavailable")
+    online = OnlineF0(checkpoint_path=str(checkpoint))
     extractor = online.extractor
     lengths = torch.tensor(request.param)
     recordings = [
