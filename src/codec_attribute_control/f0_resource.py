@@ -9,7 +9,7 @@ from .facodec import HOP, SAMPLE_RATE
 class OnlineF0(nn.Module):
     """QC-compatible online resource encoder; returns Hz [B,T,1] and lengths."""
 
-    def __init__(self, backend="yaapt", device="cpu", checkpoint_path=None):
+    def __init__(self, backend="jdc", device="cpu", checkpoint_path=None):
         super().__init__()
         self.extractor = make_extractor(backend, device=device, checkpoint_path=checkpoint_path)
 

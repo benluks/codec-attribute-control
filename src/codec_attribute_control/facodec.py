@@ -1,6 +1,8 @@
 """Thin adapter around upstream frozen FACodec; no vendoring or retraining."""
 from dataclasses import dataclass
 
+from .amphion_source import ensure_amphion_importable
+
 import torch
 
 SAMPLE_RATE = 16000
@@ -21,13 +23,8 @@ class CodecFrame:
 class FACodec(torch.nn.Module):
     def __init__(self, device: str = "cpu"):
         super().__init__()
-        try:
-            from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
-        except ImportError as error:
-            raise ImportError(
-                "Install Amphion from https://github.com/open-mmlab/Amphion and add "
-                "its parent directory to PYTHONPATH (the upstream package is named Amphion)."
-            ) from error
+        ensure_amphion_importable()
+        from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
         from huggingface_hub import hf_hub_download
 
         self.device = torch.device(device)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 import torch
+import torchaudio.functional as audio_functional
 
 from .facodec import HOP, SAMPLE_RATE
 
@@ -13,11 +14,11 @@ def aligned_pitch(extractor, waveform: torch.Tensor, sample_rate: int, n_frames:
         raise ValueError(f"Expected mono [samples], got {tuple(waveform.shape)}")
     native_sr = getattr(extractor, "sample_rate", sample_rate)
     if sample_rate != native_sr:
-        raise ValueError("Extractor sample rate mismatch; resample first")
-    raw = extractor.extract(waveform, sample_rate).detach().cpu().float().numpy()
+        waveform = audio_functional.resample(waveform, sample_rate, native_sr)
+    raw = extractor.extract(waveform, native_sr).detach().cpu().float().numpy()
     if not raw.size:
         return np.full(n_frames, np.nan, dtype=np.float32)
-    hop_seconds = (extractor.hop_length / sample_rate
+    hop_seconds = (extractor.hop_length / native_sr
                    if hasattr(extractor, "hop_length")
                    else extractor.frame_space / 1000.0)
     t = np.arange(n_frames) * HOP / SAMPLE_RATE
