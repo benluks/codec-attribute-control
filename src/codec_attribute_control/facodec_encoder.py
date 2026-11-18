@@ -45,8 +45,7 @@ class FACodecContentEncoder(ContentEncoder):
     FEATURE_DIM = 256
 
     def __init__(self, device=None, codec=None, *, batched=True):
-        device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
-        super().__init__(device=device)
+        super().__init__(device="cpu" if device is None else device)
         self.batched = batched
         self.codec = codec if codec is not None else FACodec(device=str(self.device))
 
