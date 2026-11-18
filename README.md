@@ -37,3 +37,14 @@ FACodec supports mixed-length batches; set `system.encoder.batched=false` to com
 **Current scope:** frozen representation probing, not pitch intervention or waveform editing. The JDC checkpoint matches the upstream Plachtaa/Amphion artifact, but that alone does not prove exact parity with FACodec's original training labels.
 
 More detail: [F0 probe methodology and reproducibility](docs/f0-probe.md) · [Quick Convert reuse and gaps](docs/quick-convert-gaps.md).
+
+## Probe capacity
+
+The default is a single linear projection. Configure hidden layers and their activation through Hydra:
+
+```bash
+uv run --extra train --extra facodec train-probe data_root=/path/to/collections \
+  'system.head.hidden_sizes=[128,64]' system.head.activation=gelu
+```
+
+`hidden_sizes=[]` retains the original linear probe. Supported activations: `gelu`, `relu`, `tanh`, `silu`. Compare nonlinear and linear results on the same split: an MLP probes nonlinear accessibility, not invertibility or demonstrated waveform control.
