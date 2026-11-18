@@ -5,7 +5,7 @@ defaults:
   - _self_
 
 data_root: ???
-f0_cache_root: ${data_root}/precomputed/f0/jdc
+f0_cache_root: ./outputs/precomputed/f0/jdc
 batch_size: 8
 num_workers: 24
 max_epochs: 10
