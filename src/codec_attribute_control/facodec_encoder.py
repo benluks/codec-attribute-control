@@ -80,8 +80,9 @@ class FACodecContentEncoder(ContentEncoder):
             backend="facodec", model_name="amphion/naturalspeech3_facodec",
             layer=None, frame_hz=self.frame_hz, streams=streams,
             speaker=torch.cat([f.speaker for f in frames], dim=0),
-            codes=torch.stack([f.codes for f in frames], dim=0) if
-                  len({tuple(f.codes.shape) for f in frames}) == 1 else None,
+            codes=pad_sequence(
+                [f.codes.permute(2, 0, 1) for f in frames], batch_first=True
+            ).permute(0, 2, 3, 1),
         )
 
     def forward(self, batch):
