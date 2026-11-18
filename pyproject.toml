@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 yaapt = ["amfm-decompy>=1.0.12"]
 train = ["quick-convert[training]"]
-facodec = ["einops>=0.7", "huggingface-hub>=0.20", "safetensors>=0.4", "pyworld>=0.3.4", "setuptools<81"]
+facodec = ["einops>=0.7", "huggingface-hub>=0.20", "safetensors>=0.4", "pyworld>=0.3.4", "setuptools<81", "librosa>=0.10.2"]
 
 [project.scripts]
 train-probe = "codec_attribute_control.train:main"
