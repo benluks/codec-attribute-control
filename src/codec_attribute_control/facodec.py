@@ -18,8 +18,9 @@ class CodecFrame:
     codes: torch.Tensor
 
 
-class FACodec:
+class FACodec(torch.nn.Module):
     def __init__(self, device: str = "cpu"):
+        super().__init__()
         try:
             from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
         except ImportError as error:
@@ -55,7 +56,8 @@ class FACodec:
         padding = (-waveform.numel()) % HOP
         if padding:
             waveform = torch.nn.functional.pad(waveform, (0, padding))
-        enc = self.encoder(waveform[None, None].to(self.device, dtype=torch.float32))
+        device = next(self.encoder.parameters()).device
+        enc = self.encoder(waveform[None, None].to(device, dtype=torch.float32))
         total, ids, _, parts, speaker = self.decoder(enc, vq=True, eval_vq=True)
         if len(parts) != 3 or total.ndim != 3 or parts[0].shape != total.shape:
             raise RuntimeError("Unexpected FACodec quantizer contract")

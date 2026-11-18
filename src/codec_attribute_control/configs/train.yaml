@@ -1,9 +1,10 @@
 defaults:
-  - /dataset@dataset: librispeech
+  - dataset: librispeech
   - f0: online
   - optimization: adamw_cosine
   - _self_
 
+data_root: ???
 batch_size: 8
 num_workers: 2
 max_epochs: 10
@@ -59,6 +60,8 @@ trainer:
         filename: best
 
 hydra:
+  searchpath:
+    - pkg://quick_convert.configs
   run:
     dir: outputs
   job:

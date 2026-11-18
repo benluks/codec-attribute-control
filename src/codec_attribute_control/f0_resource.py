@@ -28,4 +28,6 @@ class OnlineF0(nn.Module):
                                             device=batch.waveforms.device)[:, None])
         lengths = torch.tensor([x.shape[0] for x in contours],
                                dtype=torch.long, device=batch.waveforms.device)
-        return torch.nn.utils.rnn.pad_sequence(contours, batch_first=True), lengths
+        from quick_convert.components.resources.resolution import ResolvedResource
+        return ResolvedResource(values=torch.nn.utils.rnn.pad_sequence(contours, batch_first=True),
+                                lengths=lengths)
