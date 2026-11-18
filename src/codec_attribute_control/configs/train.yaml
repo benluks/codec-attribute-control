@@ -1,0 +1,20 @@
+# Dedicated Hydra configuration for train-probe.
+# Next phase: compose QC LightningTrainer and TrainingPipeline here.
+device: cpu
+seed: 42
+
+dataset:
+  root: ???
+  max_recordings: 50
+
+f0:
+  backend: jdc
+  checkpoint_path: null
+
+probe:
+  output: outputs/probe.joblib
+  alpha: 100.0
+
+hydra:
+  job:
+    chdir: false

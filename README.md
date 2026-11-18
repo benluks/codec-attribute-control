@@ -31,7 +31,7 @@ Override using `f0.checkpoint_path=/path/to/bst.t7` when needed.
 ## Run
 
 ```bash
-uv run codec-attribute-control dataset.root=/path/to/speech
+uv run train-probe dataset.root=/path/to/speech
 uv run codec-attribute-control task=intervene intervention.audio=/path/to/heldout.wav
 uv run pytest -q
 ```
@@ -39,7 +39,7 @@ uv run pytest -q
 For quick-convert's existing YAAPT fallback:
 
 ```bash
-uv run --extra yaapt codec-attribute-control dataset.root=/path/to/speech f0.backend=yaapt
+uv run --extra yaapt train-probe dataset.root=/path/to/speech f0.backend=yaapt
 ```
 
 The regression predicts a voiced log2 F0 recording-z-score from the
@@ -56,6 +56,12 @@ log-pitch offsets.
 See [quick-convert reuse and gaps](docs/quick-convert-gaps.md).
 
 ## Status
+
+The dedicated `train-probe` entry point currently delegates to the existing
+prototype Ridge loop. It is **not yet** implemented with quick-convert's
+`BaseTrainingModule`, `LightningTrainer` or `TrainingPipeline`; that is the
+next architectural step before this draft PR is merge-ready.
+
 
 The draft has not been verified against real FACodec/JDC checkpoints or
 model-backed generated audio; no synthesis results are claimed.
