@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import torch
 from quick_convert.training.lightning.modules.base import BaseTrainingModule
+from quick_convert.training.lightning.logging.media_logger import WandbMediaLogger
 
 from .metrics import F0ProbeMetrics
 from .plotting import make_f0_figure
@@ -56,10 +57,11 @@ class F0ProbeTrainingModule(BaseTrainingModule):
 
     def _log_validation_curves(self, f0_hz, predictions, lengths):
         logger = self.logger
-        if logger is None or not hasattr(logger.experiment, "log"):
+        from lightning.pytorch.loggers import WandbLogger
+
+        if not isinstance(logger, WandbLogger):
             return
         import matplotlib.pyplot as plt
-        import wandb
 
         figure = make_f0_figure(
             f0_hz.detach().cpu().numpy(),
@@ -69,7 +71,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         if figure is None:
             return
         try:
-            logger.experiment.log({"val/f0_curves_hz": wandb.Image(figure)}, step=self.global_step)
+            WandbMediaLogger(logger).log_figure("val/f0_curves_hz", figure, step=self.global_step)
         finally:
             plt.close(figure)
 
