@@ -37,8 +37,8 @@ class FACodecFeatures(ContentFeatures):
 class FACodecContentEncoder(ContentEncoder):
     """Adapter for the frozen upstream codec; all streams survive encoding.
 
-    Currently invokes the upstream single-recording API per item. This is
-    intentionally not advertised as vectorized FACodec execution.
+    Batches recordings sharing the same hop-padded length to preserve
+    convolutional boundaries while vectorizing each length group.
     """
     FEATURE_DIM = 256
 
@@ -65,22 +65,51 @@ class FACodecContentEncoder(ContentEncoder):
         if lengths.shape != (b,) or torch.any(lengths <= 0) or torch.any(lengths > n):
             raise ValueError("Invalid waveform lengths")
         if hasattr(self.codec, "encode_batch"):
-            frame = self.codec.encode_batch(waveforms, lengths)
-            frame_lengths = (lengths.to(frame.combined.device) + HOP - 1) // HOP
-            if frame.combined.shape[0] != b:
-                raise ValueError("Batched FACodec returned incorrect batch dimension")
-            def padded(field):
-                values = getattr(frame, field).transpose(1, 2).clone()
-                valid = torch.arange(values.shape[1], device=values.device)[None, :] < frame_lengths[:, None]
-                return values.masked_fill(~valid.unsqueeze(-1), 0)
-            combined = padded("combined")
-            streams = {name: padded(name) for name in ("prosody", "content", "residual")}
+            # Group by *hop-padded* sample count: extending a shorter waveform
+            # to its longest batch partner changes its convolutional boundary.
+            # A group is padded only to its own FACodec frame length.
+            frame_counts = ((lengths + HOP - 1) // HOP).tolist()
+            groups = {}
+            for index, count in enumerate(frame_counts):
+                groups.setdefault(count, []).append(index)
+            frames_by_index = [None] * b
+            for count, indices in groups.items():
+                group_lengths = lengths[indices]
+                group_waveforms = waveforms[indices, :count * HOP].clone()
+                if group_waveforms.shape[1] < count * HOP:
+                    group_waveforms = torch.nn.functional.pad(
+                        group_waveforms, (0, count * HOP - group_waveforms.shape[1])
+                    )
+                # The collator's padding is not guaranteed to be zero.
+                positions = torch.arange(count * HOP, device=group_waveforms.device)
+                group_waveforms.masked_fill_(positions[None, :] >= group_lengths[:, None], 0)
+                group = self.codec.encode_batch(group_waveforms, group_lengths)
+                for local_index, original_index in enumerate(indices):
+                    frames_by_index[original_index] = (
+                        group.combined[local_index].transpose(0, 1),
+                        {name: getattr(group, name)[local_index].transpose(0, 1)
+                         for name in ("prosody", "content", "residual")},
+                        group.speaker[local_index],
+                        group.codes[:, local_index],
+                    )
+            combined = pad_sequence([entry[0] for entry in frames_by_index], batch_first=True)
+            streams = {
+                name: pad_sequence([entry[1][name] for entry in frames_by_index],
+                                   batch_first=True)
+                for name in ("prosody", "content", "residual")
+            }
+            frame_lengths = torch.tensor(frame_counts, dtype=torch.long, device=combined.device)
+            speaker = torch.stack([entry[2] for entry in frames_by_index])
+            codes = pad_sequence(
+                [entry[3].transpose(0, 1) for entry in frames_by_index],
+                batch_first=True,
+            ).permute(2, 0, 1)
             return FACodecFeatures(
                 values=combined, lengths=frame_lengths, feature_dim=self.FEATURE_DIM,
                 representation_type="continuous", temporal_granularity="frame",
                 backend="facodec", model_name="amphion/naturalspeech3_facodec",
                 layer=None, frame_hz=self.frame_hz, streams=streams,
-                speaker=frame.speaker, codes=frame.codes,
+                speaker=speaker, codes=codes,
             )
         frames = [self.codec.encode(waveforms[i, :int(lengths[i])]) for i in range(b)]
         def padded(field):
