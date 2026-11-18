@@ -22,8 +22,9 @@ class CodecFrame:
 
 
 class FACodec(torch.nn.Module):
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str | None = None):
         super().__init__()
+        device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         ensure_amphion_importable()
         from Amphion.models.codec.ns3_codec import FACodecDecoder, FACodecEncoder
         from huggingface_hub import hf_hub_download

@@ -19,7 +19,7 @@ system:
   _target_: codec_attribute_control.system.F0ProbeSystem
   encoder:
     _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
-    device: cpu
+    device: null  # Auto-select CUDA when available, otherwise CPU
     batched: true
   head:
     _target_: codec_attribute_control.head.LinearF0Head
