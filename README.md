@@ -37,3 +37,7 @@ FACodec supports mixed-length batches; set `system.encoder.batched=false` to com
 **Current scope:** frozen representation probing, not pitch intervention or waveform editing. The JDC checkpoint matches the upstream Plachtaa/Amphion artifact, but that alone does not prove exact parity with FACodec's original training labels.
 
 More detail: [F0 probe methodology and reproducibility](docs/f0-probe.md) · [Quick Convert reuse and gaps](docs/quick-convert-gaps.md).
+
+## Training diagnostics
+
+Training logs batch loss and learning rate every optimizer step (`trainer.trainer_kwargs.log_every_n_steps: 1`), plus epoch-aggregated training/validation loss and voiced-frame F0 errors and correlations. Gradient-norm logging is enabled through Quick Convert's base training module. Validation pitch-curve examples are logged once per validation epoch. For lower W&B logging volume, override `trainer.trainer_kwargs.log_every_n_steps=10` (or another interval). These settings do not alter optimization or F0 targets.
