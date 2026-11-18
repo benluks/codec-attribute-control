@@ -5,3 +5,6 @@ optimizer_kwargs:
 lr_scheduler_kwargs:
   T_max: auto
   eta_min: 1e-6
+warmup:
+  _target_: quick_convert.training.lightning.optim.LinearWarmup
+  steps: 0.05

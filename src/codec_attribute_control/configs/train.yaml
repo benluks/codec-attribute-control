@@ -53,7 +53,7 @@ trainer:
       - _target_: lightning.pytorch.callbacks.LearningRateMonitor
         logging_interval: step
       - _target_: lightning.pytorch.callbacks.ModelCheckpoint
-        monitor: val/mae
+        monitor: val/normalized_log2_f0_mae
         mode: min
         save_last: false
         save_top_k: 1
