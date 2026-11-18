@@ -26,20 +26,20 @@ export PYTHONPATH="$(dirname "$PWD"):${PYTHONPATH:-}"
 
 The default JDC checkpoint is read from the Amphion source tree at
 `models/codec/facodec/modules/JDC/bst.t7`.
-Override using `--pitch-checkpoint /path/to/bst.t7` when needed.
+Override using `f0.checkpoint_path=/path/to/bst.t7` when needed.
 
 ## Run
 
 ```bash
-uv run codec-attribute-control train --audio-dir /path/to/speech
-uv run codec-attribute-control intervene --audio /path/to/heldout.wav --probe outputs/probe.joblib
+uv run codec-attribute-control dataset.root=/path/to/speech
+uv run codec-attribute-control task=intervene intervention.audio=/path/to/heldout.wav
 uv run pytest -q
 ```
 
 For quick-convert's existing YAAPT fallback:
 
 ```bash
-uv run --extra yaapt codec-attribute-control train --audio-dir /path/to/speech --f0-backend yaapt
+uv run --extra yaapt codec-attribute-control dataset.root=/path/to/speech f0.backend=yaapt
 ```
 
 The regression predicts a voiced log2 F0 recording-z-score from the

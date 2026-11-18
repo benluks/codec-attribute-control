@@ -1,42 +1,37 @@
-"""CLI for FACodec prosody probing and interventions."""
-import argparse
+"""Hydra entry point; all experiment parameters are YAML overrides."""
 import json
 
-import torch
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 from .experiment import intervene, train
 
 
-def main():
-    parser = argparse.ArgumentParser(description="FACodec F0 attribute probe")
-    sub = parser.add_subparsers(dest="command", required=True)
-    fit = sub.add_parser("train")
-    fit.add_argument("--audio-dir", required=True)
-    fit.add_argument("--output", default="outputs/probe.joblib")
-    fit.add_argument("--alpha", type=float, default=100.0)
-    fit.add_argument("--seed", type=int, default=42)
-    fit.add_argument("--max-recordings", type=int, default=50)
-    fit.add_argument("--f0-backend", choices=["jdc", "yaapt"], default="jdc")
-    fit.add_argument("--pitch-checkpoint", default=None)
-    edit = sub.add_parser("intervene")
-    edit.add_argument("--audio", required=True)
-    edit.add_argument("--probe", default="outputs/probe.joblib")
-    edit.add_argument("--output-dir", default="outputs/interventions")
-    edit.add_argument("--semitones", type=float, nargs="+", default=[-6, -3, 0, 3, 6])
-    for command in (fit, edit):
-        command.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    args = parser.parse_args()
-    if args.command == "train":
+@hydra.main(version_base=None, config_path="configs", config_name="experiment")
+def main(cfg: DictConfig) -> None:
+    if cfg.task == "train":
         result = train(
-            args.audio_dir, args.output, backend=args.f0_backend,
-            alpha=args.alpha, seed=args.seed, max_recordings=args.max_recordings,
-            checkpoint_path=args.pitch_checkpoint, device=args.device,
+            cfg.dataset.root,
+            cfg.probe.output,
+            backend=cfg.f0.backend,
+            alpha=cfg.probe.alpha,
+            seed=cfg.seed,
+            max_recordings=cfg.dataset.max_recordings,
+            checkpoint_path=cfg.f0.checkpoint_path,
+            device=cfg.device,
+        )
+    elif cfg.task == "intervene":
+        if cfg.intervention.audio is None:
+            raise ValueError("Set intervention.audio=/path/to/recording.wav")
+        result = intervene(
+            cfg.intervention.audio,
+            cfg.probe.output,
+            cfg.intervention.output_dir,
+            shifts=list(cfg.intervention.semitones),
+            device=cfg.device,
         )
     else:
-        result = intervene(
-            args.audio, args.probe, args.output_dir,
-            shifts=args.semitones, device=args.device,
-        )
+        raise ValueError(f"Unsupported task: {cfg.task}")
     print(json.dumps(result, indent=2))
 
 
