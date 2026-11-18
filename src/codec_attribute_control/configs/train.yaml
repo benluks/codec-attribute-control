@@ -6,7 +6,7 @@ defaults:
 
 data_root: ???
 batch_size: 8
-num_workers: 2
+num_workers: 24
 max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
