@@ -40,7 +40,7 @@ class FACodecFeatures(ContentFeatures):
 class FACodecContentEncoder(ContentEncoder):
     """Adapter for the frozen upstream codec; all streams survive encoding.
 
-    Runs a single padded batch through the frozen codec and masks invalid output frames.
+    Runs the frozen codec in batches and masks invalid output frames.
     """
     FEATURE_DIM = 256
 
@@ -68,7 +68,6 @@ class FACodecContentEncoder(ContentEncoder):
         if lengths.shape != (b,) or torch.any(lengths <= 0) or torch.any(lengths > n):
             raise ValueError("Invalid waveform lengths")
         if self.batched and hasattr(self.codec, "encode_batch"):
-            # Standard padded batch: one codec forward, irrespective of lengths.
             # Explicitly clear invalid samples even if the collator used nonzero padding.
             positions = torch.arange(n, device=waveforms.device)
             clean = waveforms.masked_fill(positions[None, :] >= lengths.to(waveforms.device)[:, None], 0)

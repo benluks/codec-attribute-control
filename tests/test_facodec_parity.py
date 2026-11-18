@@ -28,7 +28,9 @@ def codec():
         ([24000, 12037], 0),
     ],
 )
-def test_pretrained_batch_parity(codec, lengths, extra_padding):
+def test_pretrained_batch_parity(codec, lengths, extra_padding, monkeypatch):
+    if len(lengths) == 5:
+        monkeypatch.setattr("codec_attribute_control.facodec.MAX_BATCH_PADDED_SAMPLES", 36000)
     generator = torch.Generator().manual_seed(20261118)
     audio = [torch.randn(n, generator=generator) * 0.08 for n in lengths]
     # Leave garbage after each true end, including extra collator padding.

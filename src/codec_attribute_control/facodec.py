@@ -8,6 +8,8 @@ from .amphion_source import ensure_amphion_importable
 
 SAMPLE_RATE = 16000
 HOP = 200
+# Bound batch rows times hop-padded samples before the 64x alias-free expansion.
+MAX_BATCH_PADDED_SAMPLES = 512 * 1024
 MODEL_ID = "amphion/naturalspeech3_facodec"
 
 
@@ -148,6 +150,45 @@ class FACodec(torch.nn.Module):
             or torch.any(lengths > waveforms.shape[1])
         ):
             raise ValueError("Invalid waveform lengths")
+        output_frames = (waveforms.shape[1] + HOP - 1) // HOP
+        if waveforms.shape[0] * output_frames * HOP <= MAX_BATCH_PADDED_SAMPLES:
+            return self._encode_batch_chunk(waveforms, lengths)
+
+        padded_sizes = ((lengths.long() + HOP - 1) // HOP * HOP).tolist()
+        chunks = []
+        start = 0
+        width = 0
+        for end, size in enumerate(padded_sizes):
+            next_width = max(width, size)
+            if end > start and (end - start + 1) * next_width > MAX_BATCH_PADDED_SAMPLES:
+                chunks.append(
+                    self._encode_batch_chunk(waveforms[start:end, :width], lengths[start:end])
+                )
+                start, width = end, size
+            else:
+                width = next_width
+        chunks.append(self._encode_batch_chunk(waveforms[start:, :width], lengths[start:]))
+
+        def concatenate(field, dim):
+            values = [getattr(chunk, field) for chunk in chunks]
+            return torch.cat(
+                [
+                    torch.nn.functional.pad(value, (0, output_frames - value.shape[-1]))
+                    for value in values
+                ],
+                dim=dim,
+            )
+
+        return CodecFrame(
+            combined=concatenate("combined", dim=0),
+            prosody=concatenate("prosody", dim=0),
+            content=concatenate("content", dim=0),
+            residual=concatenate("residual", dim=0),
+            speaker=torch.cat([chunk.speaker for chunk in chunks], dim=0),
+            codes=concatenate("codes", dim=1),
+        )
+
+    def _encode_batch_chunk(self, waveforms, lengths):
         device = next(self.encoder.parameters()).device
         lengths = lengths.to(device=device, dtype=torch.long)
         waveforms = waveforms.to(device=device, dtype=torch.float32)
