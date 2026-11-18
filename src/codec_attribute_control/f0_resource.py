@@ -47,7 +47,6 @@ class OnlineF0(nn.Module):
             )
             return ResolvedResource(values=pitch.unsqueeze(-1), lengths=frame_lengths)
         contours = []
-        contours = []
         for i, n in enumerate(batch.lengths.tolist()):
             n_frames = (n + HOP - 1) // HOP
             pitch = aligned_pitch(self.extractor, batch.waveforms[i, :n].detach().cpu(),
@@ -56,6 +55,5 @@ class OnlineF0(nn.Module):
                                             device=batch.waveforms.device)[:, None])
         lengths = torch.tensor([x.shape[0] for x in contours],
                                dtype=torch.long, device=batch.waveforms.device)
-        from quick_convert.components.resources.resolution import ResolvedResource
         return ResolvedResource(values=torch.nn.utils.rnn.pad_sequence(contours, batch_first=True),
                                 lengths=lengths)
