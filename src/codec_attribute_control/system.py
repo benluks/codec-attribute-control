@@ -4,12 +4,7 @@ from quick_convert.systems.base import InferenceSystem
 
 
 class F0ProbeSystem(InferenceSystem):
-    """Encode audio into post-VQ prosody features and predict normalized F0.
-
-    The encoder must accept a QC AudioBatch and return a ContentFeatures-like
-    object with .values [B,T,C] and .lengths [B]. FACodec's eventual QC
-    content encoder will implement this interface.
-    """
+    """Predict F0 from the named prosody stream of a frozen content encoder."""
 
     def __init__(self, encoder, head, freeze_encoder=True):
         super().__init__()
@@ -28,7 +23,8 @@ class F0ProbeSystem(InferenceSystem):
 
     def forward(self, batch):
         features = self.encode(batch)
-        if features.values.ndim != 3:
+        values = features.streams["prosody"] if hasattr(features, "streams") else features.values
+        if values.ndim != 3:
             raise ValueError("Expected [B,T,C] prosody features")
-        predictions = self.head(features.values)
+        predictions = self.head(values)
         return predictions, features.lengths
