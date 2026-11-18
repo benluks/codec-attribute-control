@@ -1,17 +1,15 @@
 defaults:
-  - dataset: librispeech
+  - /dataset@dataset: librispeech
   - optimization: adamw_cosine
   - _self_
 
-data_root: ???
-f0_cache_root: ???
 batch_size: 8
 num_workers: 2
 max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
 
-experiment_name: facodec-prosody_f0-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-f0-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
 

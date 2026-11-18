@@ -12,8 +12,8 @@ register_config_resolvers()
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg):
-    train_dataset = instantiate(cfg.dataset, splits=[cfg.train_split])
-    val_dataset = instantiate(cfg.dataset, splits=[cfg.val_split]) if cfg.get("val_split") is not None else None
+    train_dataset = instantiate(cfg.dataset, splits=[cfg.train_split], load=["audio"])
+    val_dataset = instantiate(cfg.dataset, splits=[cfg.val_split], load=["audio"]) if cfg.get("val_split") is not None else None
     trainer = instantiate(cfg.trainer)
     pipeline = TrainingPipeline(
         trainer=trainer,
