@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import torch
 from quick_convert.training.lightning.modules.base import BaseTrainingModule
 
+from .metrics import F0ProbeMetrics
 from .supervision import prepare_f0_targets
 
 
@@ -16,6 +17,8 @@ class F0ProbeTrainingModule(BaseTrainingModule):
     def __init__(self, system, optimization):
         super().__init__(optimization=optimization, enable_grad_norm_logging=False)
         self.system = system
+        self.train_metrics = F0ProbeMetrics()
+        self.val_metrics = F0ProbeMetrics()
 
     def _shared_step(self, batch, stage: str) -> ProbeStepOutput:
         predictions, feature_lengths = self.system(batch)
@@ -34,10 +37,20 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         valid = voiced & (torch.arange(predictions.shape[1], device=predictions.device)[None, :]
                           < f0_lengths[:, None])
         loss = self.system.head.loss(predictions, targets, valid)
-        mae = ((predictions.detach() - targets).abs()[valid].mean()
-               if valid.any() else loss.detach() * 0.0)
+        metrics = self.train_metrics if stage == "train" else self.val_metrics
+        metrics.update(predictions, targets, valid)
         self.log(f"{stage}/loss", loss, on_step=stage == "train",
-                 on_epoch=True, batch_size=predictions.shape[0], prog_bar=True)
-        self.log(f"{stage}/mae", mae, on_step=False,
-                 on_epoch=True, batch_size=predictions.shape[0], prog_bar=True)
+                 on_epoch=False, batch_size=predictions.shape[0], prog_bar=True)
         return ProbeStepOutput(loss=loss)
+
+    def on_train_epoch_end(self):
+        self._log_epoch_metrics("train", self.train_metrics)
+
+    def on_validation_epoch_end(self):
+        self._log_epoch_metrics("val", self.val_metrics)
+
+    def _log_epoch_metrics(self, stage: str, metrics: F0ProbeMetrics):
+        for name, value in metrics.compute().items():
+            self.log(f"{stage}/{name}", value, on_step=False, on_epoch=True,
+                     prog_bar=name == "normalized_log2_f0_mae", sync_dist=False)
+        metrics.reset()
