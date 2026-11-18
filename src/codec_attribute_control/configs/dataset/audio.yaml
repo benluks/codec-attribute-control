@@ -1,7 +1,0 @@
-_target_: quick_convert.data.BaseDataset
-root: ???
-file_format: [wav, flac]
-utt_id_template: "{path.stem}"
-load: [audio]
-target_sr: 16000
-convert_to_mono: true

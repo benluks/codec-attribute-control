@@ -1,4 +1,4 @@
-"""F0 probe training using QC's BaseTrainingModule lifecycle."""
+"""QC F0 probe training from named, precomputed tensor resources."""
 from dataclasses import dataclass
 
 import torch
@@ -13,28 +13,27 @@ class ProbeStepOutput:
 
 
 class F0ProbeTrainingModule(BaseTrainingModule):
-    """Train the probe on aligned raw F0 supplied alongside an audio batch."""
-
     def __init__(self, system, optimization):
         super().__init__(optimization=optimization, enable_grad_norm_logging=False)
         self.system = system
 
     def _shared_step(self, batch, stage: str) -> ProbeStepOutput:
-        # Target sourcing is intentionally separate from this module.
-        # The dataset/adapter must provide F0 on the encoder's frame grid.
-        audio = batch["audio"]
-        f0_hz = batch["f0_hz"]
-        f0_lengths = batch["f0_lengths"]
-        predictions, feature_lengths = self.system(audio)
+        predictions, feature_lengths = self.system(batch)
+        if "f0" not in batch.resources:
+            raise ValueError("F0 resource missing; configure a dataset with loaded F0 tensors")
+        resource = batch.resources["f0"]
+        f0_hz = resource.values
+        if f0_hz.ndim != 3 or f0_hz.shape[-1] != 1:
+            raise ValueError("F0 resource must be [B,T,1] (one Hz value per frame)")
+        f0_hz = f0_hz.squeeze(-1)
         if f0_hz.shape != predictions.shape:
-            raise ValueError("Aligned F0 must match prediction shape [B,T]")
-        if not torch.equal(f0_lengths.to(feature_lengths.device), feature_lengths):
-            raise ValueError("F0 and encoder valid frame lengths differ")
-        targets, voiced = prepare_f0_targets(
-            f0_hz.to(predictions.device), f0_lengths.to(predictions.device)
-        )
-        frames = torch.arange(predictions.shape[1], device=predictions.device)
-        valid = voiced & (frames[None, :] < feature_lengths[:, None])
+            raise ValueError("F0 and encoder frames must have matching [B,T] shapes")
+        f0_lengths = resource.lengths.to(predictions.device)
+        if not torch.equal(f0_lengths, feature_lengths.to(predictions.device)):
+            raise ValueError("F0 and encoder valid lengths differ")
+        targets, voiced = prepare_f0_targets(f0_hz.to(predictions.device), f0_lengths)
+        valid = voiced & (torch.arange(predictions.shape[1], device=predictions.device)[None, :]
+                          < f0_lengths[:, None])
         loss = self.system.head.loss(predictions, targets, valid)
         mae = ((predictions.detach() - targets).abs()[valid].mean()
                if valid.any() else loss.detach() * 0.0)

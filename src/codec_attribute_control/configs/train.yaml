@@ -1,18 +1,21 @@
 defaults:
-  - dataset: audio
+  - dataset: librispeech
   - optimization: adamw_cosine
   - _self_
 
-seed: 42
-val_fraction: 0.2
-batch_size: 1
-num_workers: 0
+data_root: ???
+f0_cache_root: ???
+batch_size: 8
+num_workers: 2
 max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
 
-# The training module expects a batch with audio, aligned f0_hz, and
-# f0_lengths. The current audio dataset does not yet provide these.
+experiment_name: facodec-prosody_f0-${hydra:runtime.choices.dataset}-${train_split}-${f0_mode}
+train_split: train-clean-100
+val_split: dev-clean
+f0_mode: cached
+
 system:
   _target_: codec_attribute_control.system.F0ProbeSystem
   encoder:
@@ -40,7 +43,15 @@ trainer:
     max_epochs: ${max_epochs}
     accelerator: auto
     devices: 1
+    logger:
+      _target_: lightning.pytorch.loggers.WandbLogger
+      _partial_: true
+      project: codec-attribute-control
+      name: ${experiment_name}
+      save_dir: ${hydra:runtime.output_dir}
     callbacks:
+      - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+        logging_interval: step
       - _target_: lightning.pytorch.callbacks.ModelCheckpoint
         monitor: val/mae
         mode: min
@@ -50,6 +61,6 @@ trainer:
 
 hydra:
   run:
-    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: outputs/${experiment_name}
   job:
     chdir: false
