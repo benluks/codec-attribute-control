@@ -1,12 +1,12 @@
 """Online F0 resource on the FACodec frame grid."""
 import torch
+import torchaudio.functional as audio_functional
+from quick_convert.components.resources.resolution import ResolvedResource
 from torch import nn
 
+from .extractors import JDC_SAMPLE_RATE, JDCF0Extractor
 from .f0 import aligned_pitch, make_extractor
-from .extractors import JDCF0Extractor, JDC_SAMPLE_RATE
-import torchaudio.functional as audio_functional
 from .facodec import HOP, SAMPLE_RATE
-from quick_convert.components.resources.resolution import ResolvedResource
 
 
 class OnlineF0(nn.Module):
@@ -27,7 +27,9 @@ class OnlineF0(nn.Module):
             lengths = batch.lengths.to(device=device, dtype=torch.long)
             # Resample the entire padded batch in one operation.
             # Native valid lengths use torchaudio's ceil(input * new / old).
-            padded = audio_functional.resample(batch.waveforms, SAMPLE_RATE, JDC_SAMPLE_RATE)
+            positions = torch.arange(batch.waveforms.shape[1], device=device)
+            waveforms = batch.waveforms.masked_fill(positions >= lengths[:, None], 0)
+            padded = audio_functional.resample(waveforms, SAMPLE_RATE, JDC_SAMPLE_RATE)
             native_lengths = torch.div(
                 lengths * JDC_SAMPLE_RATE + SAMPLE_RATE - 1,
                 SAMPLE_RATE,

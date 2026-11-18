@@ -9,11 +9,10 @@ from pathlib import Path
 
 import torch
 import torchaudio
-
-from .amphion_source import ensure_amphion_importable
-
 from quick_convert.components.features.f0.base import F0Extractor
 from quick_convert.components.features.f0.yaapt import YAAPTF0Extractor
+
+from .amphion_source import ensure_amphion_importable
 
 JDC_SAMPLE_RATE = 24_000
 JDC_HOP = 300
@@ -76,6 +75,68 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
         f0 = self.model(mel[None, None])[0][0]
         return f0.detach().cpu().float()
 
+    def train(self, mode: bool = True):
+        return super().train(False)
+
+    def _batch_log_mel(self, waveforms, lengths):
+        spec = self.to_mel.spectrogram
+        half_fft = spec.n_fft // 2
+        positions = torch.arange(
+            -half_fft, waveforms.shape[-1] + half_fft, device=waveforms.device
+        )
+        # Reflect at each true end, including recordings shorter than half an FFT.
+        period = (2 * (lengths[:, None] - 1)).clamp_min(1)
+        indices = positions.remainder(period)
+        indices = torch.minimum(indices, period - indices)
+        reflected = waveforms.gather(1, indices)
+        power = torchaudio.functional.spectrogram(
+            reflected,
+            pad=spec.pad,
+            window=spec.window,
+            n_fft=spec.n_fft,
+            hop_length=spec.hop_length,
+            win_length=spec.win_length,
+            power=spec.power,
+            normalized=spec.normalized,
+            center=False,
+        )
+        return (torch.log(self.to_mel.mel_scale(power) + 1e-5) + 4.0) / 4.0
+
+    def _batch_pitch(self, mel, frame_lengths):
+        model = self.model
+        if torch.all(frame_lengths == mel.shape[-1]):
+            return model(mel[:, None])[0]
+
+        x = mel.transpose(1, 2).unsqueeze(1)
+        padding = (
+            torch.arange(x.shape[2], device=x.device) >= frame_lengths[:, None]
+        )[:, None, :, None]
+
+        def convolve(layers, x):
+            for layer in layers:
+                # BatchNorm and activations can make padded positions nonzero.
+                if isinstance(layer, torch.nn.Conv2d):
+                    x.masked_fill_(padding, 0)
+                x = layer(x)
+            return x
+
+        x = convolve(model.conv_block, x)
+        for block in (model.res_block1, model.res_block2, model.res_block3):
+            x = block.pre_conv(x)
+            residual = block.conv1by1(x) if block.conv1by1 is not None else x
+            x = convolve(block.conv, x) + residual
+        x = model.pool_block(x).transpose(1, 2).flatten(2)
+
+        # The backward LSTM must start at each utterance's last valid frame.
+        packed = torch.nn.utils.rnn.pack_padded_sequence(
+            x, frame_lengths.cpu(), batch_first=True, enforce_sorted=False,
+        )
+        packed, _ = model.bilstm_classifier(packed)
+        x, _ = torch.nn.utils.rnn.pad_packed_sequence(
+            packed, batch_first=True, total_length=mel.shape[-1],
+        )
+        return model.classifier(x).squeeze(-1).abs()
+
     @torch.inference_mode()
     def extract_batch(self, waveforms: torch.Tensor, lengths: torch.Tensor, sample_rate: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Batched JDC inference; returns padded Hz contours and native frame lengths."""
@@ -88,14 +149,9 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
         lengths = lengths.to(device=device, dtype=torch.long)
         if torch.any(lengths <= 0) or torch.any(lengths > waveforms.shape[1]):
             raise ValueError("Invalid waveform lengths")
-        # One batched spectrogram and one batched JDC forward pass.
-        # Centered STFT sees zero-padding at the ends of shorter recordings;
-        # compare those boundary frames against independent extraction.
-        mel = self.to_mel(waveforms)
-        mel = (torch.log(mel + 1e-5) + 4.0) / 4.0
+        mel = self._batch_log_mel(waveforms, lengths)
         frame_lengths = torch.div(lengths, JDC_HOP, rounding_mode="floor") + 1
-        f0 = self.model(mel[:, None])[0]
-        return f0, frame_lengths
+        return self._batch_pitch(mel, frame_lengths), frame_lengths
 
     def extract_sample(self, sample):
         if sample.waveform is None or sample.sample_rate is None:
