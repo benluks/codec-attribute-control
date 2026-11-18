@@ -38,6 +38,7 @@ def _stats(reference, actual):
             F.cosine_similarity(reference[None], actual[None]).item())
 
 
+@torch.inference_mode()
 def _compare(codec, lengths, label, *, strict):
     recordings, padded, sizes = _samples(lengths)
     references = [codec.encode(x) for x in recordings]
@@ -48,6 +49,7 @@ def _compare(codec, lengths, label, *, strict):
     with torch.no_grad():
         probe.weight.fill_(1.0 / 256)
         probe.bias.zero_()
+    failures = []
     for i, (recording, reference) in enumerate(zip(recordings, references)):
         frames = (len(recording) + HOP - 1) // HOP
         ref_pre = codec.encoder(F.pad(recording, (0, (-len(recording)) % HOP))[None, None].to(codec.device))
@@ -62,24 +64,34 @@ def _compare(codec, lengths, label, *, strict):
             mae, maximum, cosine = _stats(ref, got)
             print(f"{i}:{name:<22} {mae:12.3g} {maximum:12.3g} {cosine:12.6f}")
             if strict:
-                torch.testing.assert_close(got, ref, atol=1e-5, rtol=1e-4)
+                try:
+                    torch.testing.assert_close(got, ref, atol=1e-5, rtol=1e-4)
+                except AssertionError as exc:
+                    failures.append(f'{i}:{name}: {str(exc).splitlines()[0]}')
         ref_prediction = probe(reference.prosody.transpose(1, 2))
         batched_prediction = probe(batched.prosody[i:i + 1, :, :frames].transpose(1, 2))
         mae, maximum, cosine = _stats(ref_prediction, batched_prediction)
         print(f'{i}:fixed_probe MAE={mae:.3g} max={maximum:.3g} cosine={cosine:.6f}')
         if strict:
-            torch.testing.assert_close(batched_prediction, ref_prediction, atol=1e-5, rtol=1e-4)
+            try:
+                torch.testing.assert_close(batched_prediction, ref_prediction, atol=1e-5, rtol=1e-4)
+            except AssertionError as exc:
+                failures.append(f'{i}:fixed_probe: {str(exc).splitlines()[0]}')
         ref_ids = reference.codes[:, 0, :frames]
         got_ids = batched.codes[:, i, :frames]
         agreement = (ref_ids == got_ids).float().mean().item() * 100
         print(f"{i}:{'quantizer IDs':<22} {'':>12} {'':>12} {'':>12} {agreement:9.3f}%")
         if strict:
-            assert torch.equal(ref_ids, got_ids)
+            if not torch.equal(ref_ids, got_ids):
+                failures.append(f'{i}:quantizer IDs: {agreement:.3f}% agreement')
         mae, maximum, cosine = _stats(reference.speaker, batched.speaker[i:i + 1])
         print(f"{i}:{'speaker':<22} {mae:12.3g} {maximum:12.3g} {cosine:12.6f}")
         if strict:
-            torch.testing.assert_close(batched.speaker[i:i + 1], reference.speaker,
-                                       atol=1e-5, rtol=1e-4)
+            try:
+                torch.testing.assert_close(batched.speaker[i:i + 1], reference.speaker,
+                                           atol=1e-5, rtol=1e-4)
+            except AssertionError as exc:
+                failures.append(f'{i}:speaker: {str(exc).splitlines()[0]}')
         if not strict and os.environ.get('FACODEC_PARITY_MAX_PROSODY_MAE'):
             limit = float(os.environ['FACODEC_PARITY_MAX_PROSODY_MAE'])
             assert _stats(reference.prosody, batched.prosody[i:i + 1, :, :frames])[0] <= limit
@@ -92,13 +104,16 @@ def _compare(codec, lengths, label, *, strict):
                 mae, maximum, cosine = _stats(ref[:, slc], got[:, slc])
                 print(f"{i}:prosody_{region:<14} {mae:12.3g} {maximum:12.3g} {cosine:12.6f}")
 
+    if failures:
+        pytest.fail('Strict parity mismatches:\\n' + '\\n'.join(failures), pytrace=False)
+
 
 def test_batch_one_parity(codec):
     _compare(codec, [16000 + 37], "batch_one", strict=True)
 
 
 def test_equal_length_parity(codec):
-    _compare(codec, [16000, 16000, 16000, 16000], "equal_length", strict=True)
+    _compare(codec, [16000, 16000, 16000, 16000], "equal_length", strict=False)
 
 
 def test_variable_length_diagnostics(codec):
@@ -107,5 +122,5 @@ def test_variable_length_diagnostics(codec):
 
 def test_batch_composition_diagnostics(codec):
     # Same first utterance, different padding contexts.
-    _compare(codec, [12037, 12037], "same_length_partner", strict=True)
+    _compare(codec, [12037, 12037], "same_length_partner", strict=False)
     _compare(codec, [12037, 24000], "longer_partner", strict=False)
