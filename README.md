@@ -16,17 +16,80 @@ loading, mono downmix and resampling. Pitch backends follow the
 No pYIN implementation or dependency. F0 extractors return physical Hz;
 normalizing voiced log2 F0 is a separate label transform.
 
-## Setup
+## Installation
 
 ```bash
+git clone https://github.com/benluks/codec-attribute-control.git
+cd codec-attribute-control
 uv sync --group dev
 git clone https://github.com/open-mmlab/Amphion.git ../Amphion
 export PYTHONPATH="$(dirname "$PWD"):${PYTHONPATH:-}"
 ```
 
+`uv sync` installs this project's declared Quick Convert dependency. The
+direct codec wrapper uses PyTorch plus Amphion's FACodec implementation;
+Quick Convert is only needed for the `FACodecContentEncoder` pipeline adapter
+and the training workflow.
+
 The default JDC checkpoint is read from the Amphion source tree at
 `models/codec/facodec/modules/JDC/bst.t7`.
 Override using `f0.checkpoint_path=/path/to/bst.t7` when needed.
+
+## Use the pretrained FACodec wrapper
+
+`codec_attribute_control.facodec.FACodec` constructs the published 16 kHz
+NaturalSpeech 3 FACodec architecture and downloads its official checkpoint
+files from `amphion/naturalspeech3_facodec` on first use. It exposes separate
+prosody, content and residual contributions, a speaker embedding, and six RVQ
+codebooks.
+
+```python
+import torchaudio
+from codec_attribute_control.facodec import FACodec, SAMPLE_RATE
+
+waveform, rate = torchaudio.load("speech.wav")
+waveform = waveform.mean(dim=0)
+if rate != SAMPLE_RATE:
+    waveform = torchaudio.functional.resample(waveform, rate, SAMPLE_RATE)
+
+codec = FACodec(device="cpu")
+frame = codec.encode(waveform)
+reconstruction = codec.decode(frame)
+
+print(frame.codes.shape)     # [6, 1, frames]
+print(frame.prosody.shape)   # [1, 256, frames]
+print(frame.content.shape)   # [1, 256, frames]
+print(frame.residual.shape)  # [1, 256, frames]
+print(reconstruction.shape)  # [samples]
+```
+
+`decode(frame, delta=...)` supports the experiment's post-quantization
+prosody intervention. `delta` must match `frame.prosody`; content, residual
+detail, speaker embedding, and discrete IDs are retained unchanged.
+
+## Use it with Quick Convert
+
+`FACodecContentEncoder` adapts the frozen codec to Quick Convert's
+`ContentEncoder` contract. It trims each padded waveform to its valid length
+and returns a combined `[batch, frames, 256]` representation with exact frame
+lengths and retained factor streams.
+
+```python
+import torch
+from codec_attribute_control.facodec_encoder import FACodecContentEncoder
+
+encoder = FACodecContentEncoder(device="cpu")
+features = encoder.encode_waveforms(
+    torch.randn(2, 16_000),
+    lengths=torch.tensor([16_000, 12_000]),
+    sample_rate=16_000,
+)
+print(features.values.shape)      # [2, 80, 256]
+print(features.lengths.tolist())  # [80, 60]
+```
+
+Quick Convert is not needed for direct `FACodec` use. It is required for
+`FACodecContentEncoder`, dataset abstractions, and the training command.
 
 ## Run
 
