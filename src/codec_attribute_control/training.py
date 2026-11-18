@@ -1,4 +1,4 @@
-"""QC F0 probe training from named, precomputed tensor resources."""
+"""QC F0 probe training, independent of online or cached target sourcing."""
 from dataclasses import dataclass
 
 import torch
@@ -19,18 +19,17 @@ class F0ProbeTrainingModule(BaseTrainingModule):
 
     def _shared_step(self, batch, stage: str) -> ProbeStepOutput:
         predictions, feature_lengths = self.system(batch)
-        if "f0" not in batch.resources:
-            raise ValueError("F0 resource missing; configure a dataset with loaded F0 tensors")
-        resource = batch.resources["f0"]
+        resource = self.system.get_resource(batch, "f0")
         f0_hz = resource.values
-        if f0_hz.ndim != 3 or f0_hz.shape[-1] != 1:
-            raise ValueError("F0 resource must be [B,T,1] (one Hz value per frame)")
-        f0_hz = f0_hz.squeeze(-1)
+        if f0_hz.ndim == 3 and f0_hz.shape[-1] == 1:
+            f0_hz = f0_hz.squeeze(-1)
         if f0_hz.shape != predictions.shape:
-            raise ValueError("F0 and encoder frames must have matching [B,T] shapes")
+            raise ValueError("Aligned F0 must match prediction shape [B,T]")
+        if resource.lengths is None:
+            raise ValueError("F0 resource must provide valid lengths")
         f0_lengths = resource.lengths.to(predictions.device)
         if not torch.equal(f0_lengths, feature_lengths.to(predictions.device)):
-            raise ValueError("F0 and encoder valid lengths differ")
+            raise ValueError("F0 and encoder valid frame lengths differ")
         targets, voiced = prepare_f0_targets(f0_hz.to(predictions.device), f0_lengths)
         valid = voiced & (torch.arange(predictions.shape[1], device=predictions.device)[None, :]
                           < f0_lengths[:, None])
