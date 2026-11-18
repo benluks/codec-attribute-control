@@ -55,9 +55,17 @@ trainer:
       - _target_: lightning.pytorch.callbacks.ModelCheckpoint
         monitor: val/mae
         mode: min
-        save_last: true
+        save_last: false
         save_top_k: 1
         filename: best
+      - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+        monitor: epoch
+        mode: max
+        save_top_k: 2
+        every_n_epochs: 1
+        save_on_train_epoch_end: true
+        filename: 'recent-{epoch:03d}'
+        auto_insert_metric_name: false
 
 hydra:
   run:
