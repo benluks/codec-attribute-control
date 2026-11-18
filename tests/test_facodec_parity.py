@@ -44,6 +44,10 @@ def _compare(codec, lengths, label, *, strict):
     batched = codec.encode_batch(padded, sizes)
     print(f"\\n{label}: lengths={lengths}")
     print(f"{'item':<24} {'MAE':>12} {'max':>12} {'cosine':>12} {'IDs %':>10}")
+    probe = torch.nn.Linear(256, 1, device=codec.device).eval()
+    with torch.no_grad():
+        probe.weight.fill_(1.0 / 256)
+        probe.bias.zero_()
     for i, (recording, reference) in enumerate(zip(recordings, references)):
         frames = (len(recording) + HOP - 1) // HOP
         ref_pre = codec.encoder(F.pad(recording, (0, (-len(recording)) % HOP))[None, None].to(codec.device))
@@ -59,6 +63,12 @@ def _compare(codec, lengths, label, *, strict):
             print(f"{i}:{name:<22} {mae:12.3g} {maximum:12.3g} {cosine:12.6f}")
             if strict:
                 torch.testing.assert_close(got, ref, atol=1e-5, rtol=1e-4)
+        ref_prediction = probe(reference.prosody.transpose(1, 2))
+        batched_prediction = probe(batched.prosody[i:i + 1, :, :frames].transpose(1, 2))
+        mae, maximum, cosine = _stats(ref_prediction, batched_prediction)
+        print(f'{i}:fixed_probe MAE={mae:.3g} max={maximum:.3g} cosine={cosine:.6f}')
+        if strict:
+            torch.testing.assert_close(batched_prediction, ref_prediction, atol=1e-5, rtol=1e-4)
         ref_ids = reference.codes[:, 0, :frames]
         got_ids = batched.codes[:, i, :frames]
         agreement = (ref_ids == got_ids).float().mean().item() * 100
@@ -70,6 +80,9 @@ def _compare(codec, lengths, label, *, strict):
         if strict:
             torch.testing.assert_close(batched.speaker[i:i + 1], reference.speaker,
                                        atol=1e-5, rtol=1e-4)
+        if not strict and os.environ.get('FACODEC_PARITY_MAX_PROSODY_MAE'):
+            limit = float(os.environ['FACODEC_PARITY_MAX_PROSODY_MAE'])
+            assert _stats(reference.prosody, batched.prosody[i:i + 1, :, :frames])[0] <= limit
         # Separate boundary from interior; the final 8 frames are diagnostic.
         ref = reference.prosody[0]
         got = batched.prosody[i, :, :frames]
