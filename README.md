@@ -32,7 +32,7 @@ Override using `f0.checkpoint_path=/path/to/bst.t7` when needed.
 
 ```bash
 uv run train-probe dataset.root=/path/to/speech
-uv run codec-attribute-control task=intervene intervention.audio=/path/to/heldout.wav
+# Intervention CLI deferred until the QC waveform generator is available
 uv run pytest -q
 ```
 
@@ -42,7 +42,7 @@ For quick-convert's existing YAAPT fallback:
 uv run --extra yaapt train-probe dataset.root=/path/to/speech f0.backend=yaapt
 ```
 
-The regression predicts a voiced log2 F0 recording-z-score from the
+The linear probe predicts a voiced log2 F0 recording-z-score from the
 **post-quantization prosody contribution** of frozen Amphion NaturalSpeech 3
 FACodec. Content, residual and speaker conditioning stay unchanged.
 Recording normalization is currently an approximation to Plachtaa's
@@ -57,11 +57,6 @@ See [quick-convert reuse and gaps](docs/quick-convert-gaps.md).
 
 ## Status
 
-The dedicated `train-probe` entry point currently delegates to the existing
-prototype Ridge loop. It is **not yet** implemented with quick-convert's
-`BaseTrainingModule`, `LightningTrainer` or `TrainingPipeline`; that is the
-next architectural step before this draft PR is merge-ready.
-
-
+Training now enters QC's `TrainingPipeline.run()` via `LightningTrainer` and a project-specific `BaseTrainingModule`. FACodec integration remains provisional and has not been model-tested.\n\n
 The draft has not been verified against real FACodec/JDC checkpoints or
 model-backed generated audio; no synthesis results are claimed.

@@ -23,8 +23,7 @@ dependencies = [
 yaapt = ["amfm-decompy>=1.0.12"]
 
 [project.scripts]
-codec-attribute-control = "codec_attribute_control.cli:main"
-train-probe = "codec_attribute_control.train_probe:main"
+train-probe = "codec_attribute_control.train:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.12"]

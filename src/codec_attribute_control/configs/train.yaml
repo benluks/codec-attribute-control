@@ -1,20 +1,51 @@
-# Dedicated Hydra configuration for train-probe.
-# Next phase: compose QC LightningTrainer and TrainingPipeline here.
-device: cpu
-seed: 42
+defaults:
+  - dataset: audio
+  - optimization: adamw_cosine
+  - _self_
 
-dataset:
-  root: ???
-  max_recordings: 50
+seed: 42
+val_fraction: 0.2
+batch_size: 1
+num_workers: 0
+max_epochs: 10
+learning_rate: 0.0003
+weight_decay: 0.01
+feature_dim: 256
 
 f0:
   backend: jdc
   checkpoint_path: null
 
-probe:
-  output: outputs/probe.joblib
-  alpha: 100.0
+trainer:
+  _target_: quick_convert.training.lightning.trainer.LightningTrainer
+  module:
+    _target_: codec_attribute_control.training.F0ProbeTrainingModule
+    optimization: ${optimization}
+    feature_dim: ${feature_dim}
+    f0_backend: ${f0.backend}
+    f0_checkpoint_path: ${f0.checkpoint_path}
+    device: cpu
+  train_dataloader_kwargs:
+    batch_size: ${batch_size}
+    shuffle: true
+    num_workers: ${num_workers}
+  val_dataloader_kwargs:
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
+  trainer_kwargs:
+    max_epochs: ${max_epochs}
+    accelerator: auto
+    devices: 1
+    callbacks:
+      - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+        monitor: val/mae
+        mode: min
+        save_last: true
+        save_top_k: 1
+        filename: best
 
 hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
     chdir: false
