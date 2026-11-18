@@ -10,6 +10,8 @@ from pathlib import Path
 import torch
 import torchaudio
 
+from .amphion_source import ensure_amphion_importable
+
 from quick_convert.components.features.f0.base import F0Extractor
 from quick_convert.components.features.f0.yaapt import YAAPTF0Extractor
 
@@ -26,11 +28,12 @@ class JDCF0Extractor(F0Extractor):
     """
 
     def __init__(self, checkpoint_path: str | None = None, device: str = "cpu"):
+        ensure_amphion_importable()
         try:
             from Amphion.models.codec.facodec.modules.JDC.model import JDCNet
         except ImportError as error:
             raise ImportError(
-                "Amphion source is required; add its parent directory to PYTHONPATH."
+                "Amphion source is required; initialize the Git submodule."
             ) from error
         if checkpoint_path is None:
             try:

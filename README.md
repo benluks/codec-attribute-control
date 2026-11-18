@@ -20,8 +20,8 @@ normalizing voiced log2 F0 is a separate label transform.
 
 ```bash
 uv sync --group dev
-git clone https://github.com/open-mmlab/Amphion.git ../Amphion
-export PYTHONPATH="$(dirname "$PWD"):${PYTHONPATH:-}"
+git submodule update --init
+uv sync --extra train --extra facodec
 ```
 
 The default JDC checkpoint is read from the Amphion source tree at
