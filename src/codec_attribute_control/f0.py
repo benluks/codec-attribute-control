@@ -1,38 +1,37 @@
-"""Pitch extraction and explicit timestamp alignment to codec frame centers."""
+"""Frame alignment and F0 extractor selection."""
+from __future__ import annotations
+
 import numpy as np
 import torch
 
-from .facodec import SAMPLE_RATE, HOP
+from .facodec import HOP, SAMPLE_RATE
 
 
-def extract_pitch(waveform: torch.Tensor, n_frames: int, backend: str = "pyin") -> np.ndarray:
-    """Output Hz with NaN for unvoiced, [n_frames].
+def aligned_pitch(extractor, waveform: torch.Tensor, sample_rate: int, n_frames: int) -> np.ndarray:
+    """Nearest align Hz F0 from a quick-convert extractor to FACodec's 80Hz grid."""
+    if waveform.ndim != 1:
+        raise ValueError(f"Expected mono [samples], got {tuple(waveform.shape)}")
+    native_sr = getattr(extractor, "sample_rate", sample_rate)
+    if sample_rate != native_sr:
+        raise ValueError("Extractor sample rate mismatch; resample first")
+    raw = extractor.extract(waveform, sample_rate).detach().cpu().float().numpy()
+    if not raw.size:
+        return np.full(n_frames, np.nan, dtype=np.float32)
+    hop_seconds = (extractor.hop_length / sample_rate
+                   if hasattr(extractor, "hop_length")
+                   else extractor.frame_space / 1000.0)
+    t = np.arange(n_frames) * HOP / SAMPLE_RATE
+    index = np.clip(np.rint(t / hop_seconds).astype(int), 0, len(raw) - 1)
+    pitch = raw[index].copy()
+    pitch[~np.isfinite(pitch) | (pitch <= 5.0)] = np.nan
+    return pitch
 
-    pyin: 12.5ms hop / aligned nearest voiced mask; accurate but slow.
-    yaapt: quick-convert's YAAPTF0Extractor with 10ms hop (optional extra).
-    """
-    y = waveform.detach().cpu().float().reshape(-1)
+
+def make_extractor(backend: str, *, device: str = "cpu", checkpoint_path: str | None = None):
+    if backend == "jdc":
+        from .extractors import JDCF0Extractor
+        return JDCF0Extractor(checkpoint_path=checkpoint_path, device=device)
     if backend == "yaapt":
         from quick_convert.components.features.f0.yaapt import YAAPTF0Extractor
-        extractor = YAAPTF0Extractor(zero_on_failure=False)
-        f = extractor.extract(y, SAMPLE_RATE).numpy()
-        hop = int(SAMPLE_RATE * extractor.frame_space / 1000)
-        t_ref = np.arange(f.size) * hop / SAMPLE_RATE
-        voiced = np.isfinite(f) & (f > 5)
-    elif backend == "pyin":
-        import librosa
-        f, voiced, _ = librosa.pyin(y.numpy(), sr=SAMPLE_RATE, hop_length=HOP,
-                                    frame_length=1024, fmin=65, fmax=900)
-        t_ref = np.arange(len(f)) * HOP / SAMPLE_RATE
-        voiced = np.asarray(voiced, bool) & np.isfinite(f)
-    else:
-        raise ValueError(f"Unknown F0 backend: {backend}")
-    if len(f) == 0:
-        return np.full(n_frames, np.nan, dtype=np.float32)
-    t_codec = (np.arange(n_frames) + 0.5) * HOP / SAMPLE_RATE
-    right = np.clip(np.searchsorted(t_ref, t_codec), 0, len(f) - 1)
-    left = np.maximum(right - 1, 0)
-    nearest = np.where(np.abs(t_ref[left] - t_codec) <= np.abs(t_ref[right] - t_codec), left, right)
-    aligned = np.asarray(f, dtype=np.float32)[nearest]
-    aligned[~voiced[nearest]] = np.nan
-    return aligned
+        return YAAPTF0Extractor(zero_on_failure=False)
+    raise ValueError(f"F0 backend must be 'jdc' or 'yaapt', got {backend!r}")

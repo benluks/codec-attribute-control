@@ -1,48 +1,55 @@
-# quick-convert reuse and missing abstractions
+# quick-convert reuse and remaining gaps
 
-This experiment intentionally imports quick-convert as a dependency; it does not
-copy its audio utilities or its YAAPT F0 implementation.
+This experiment follows the downstream-library pattern of
+[speech-semantic-vectors](https://github.com/benluks/speech-semantic-vectors):
+compose quick-convert's published interfaces instead of duplicating them.
 
-## Reused
+## Reused directly
 
-- `quick_convert.utils.audio.load_audio`: mono decoding and 16 kHz resampling.
-- `quick_convert.components.features.f0.yaapt.YAAPTF0Extractor`: optional
-  F0 backend, if `amfm-decompy` is installed.
+- `quick_convert.data.BaseDataset`: discovery, lazy audio loading, mono
+  downmix and 16kHz resampling.
+- `quick_convert.utils.audio.load_audio`: loading at the JDC native 24kHz
+  when required, avoiding duplicate decoding logic.
+- `quick_convert.components.features.f0.base.F0Extractor`: shared abstract
+  base; local `JDCF0Extractor` subclasses this.
+- `quick_convert.components.features.f0.yaapt.YAAPTF0Extractor`:
+  fallback directly instantiated, without local wrapper subclass.
+- `quick_convert.components.resources.base.BaseResourceExtractor`: inherited
+  feature_name, extract_sample, extract_batch and provide_sample contracts.
 
-## Implemented here, and why
+## Local code and reasons
 
-- FACodec pretrained encoder/decoder adapter: no stable, published FACodec
-  post-quantization decomposition interface was identified in quick-convert.
-  This needs upstream checkpoint and shape tests before promoting it.
-- `f0_target`: FACodec-specific log2/voiced/per-segment normalization and
-  unvoiced sentinel; not appropriate as a generic F0 extractor default.
-- Ridge probe, recording-disjoint evaluation, and minimum-norm interventions:
-  experimental analysis rather than a reusable training system. Consider
-  upstream generic frozen-feature probe and intervention protocols later.
-- Frame timestamp alignment: pitch and codec features may have different hop
-  sizes. A generic typed feature/timebase alignment utility would be valuable.
-- CLI and result JSON: intentionally small until a stable quick-convert
-  experiment/evaluation runner is suitable.
+- JDC implementation: original pretrained model architecture, checkpoint,
+  mel preprocessing, and sample rate are backend-specific. The backend is a
+  proper QC feature extractor; no new generic interface is introduced.
+- FACodec encoder/decoder adapter: NS3 post-VQ factor decomposition and
+  speaker-conditioned decoding have no matching published QC class.
+- Codec↔pitch timebase alignment: currently per-backend; QC could provide
+  an explicit timebase alignment primitive.
+- Voiced log2-F0 normalization: belongs in experimental label transforms,
+  not in an F0 extractor that returns physical Hz.
+- Frozen ridge probe and minimum-norm latent edit: currently a small
+  experiment; generic QC support might help if repeated across codecs.
 
-## Potential upstream improvements
+## Upstream candidate improvements
 
-1. A common codec adapter contract exposing quantized factor contributions,
-   combined decoder input, speaker conditioning, sample rate, and hop.
-2. A generic F0-target transform with explicit statistics scope, voiced mask,
-   normalization provenance, and timestamp alignment.
-3. Frozen feature extraction with recording-disjoint split and cache provenance.
-4. Generic latent-direction intervention and resynthesis evaluation.
+1. Typed codec-factor contributions and codec decoder inputs with timebase.
+2. Timebase-aware feature alignment (target frame centers and valid lengths).
+3. Label normalization provenance, including extractor/checkpoint, normalization
+   scope, and crop/window length.
+4. A generalized frozen linear probe/evaluator.
 
-## Known limitations
+## Validation and caveats
 
-- No model/checkpoint integration test has run yet.
-- F0 extraction uses pYIN by default, not the exact upstream FACodec training
-  pitch extractor; target normalization matches the released training recipe,
-  but extractor parity and crop/window parity are not established.
-- Per-recording normalization approximates per-crop training normalization
-  only when each recording is treated as one segment.
-- A constant absolute pitch shift cancels under per-segment log-F0 z-scoring.
-  The semitone intervention deliberately holds source statistics fixed and
-  must not be presented as a learned absolute-pitch control.
-- Random direction controls, disentanglement metrics, and calibration are
-  follow-up work.
+- FACodec NS3 and Plachtaa's FAcodec are different implementations. The JDC
+  checkpoint Git SHA is identical between Plachtaa and Amphion's facodec assets.
+  This does not prove it was used to supervise the pretrained NS3 codec.
+- The Plachtaa one-second training crop does not establish the NS3 crop size.
+  This scaffold currently normalizes each full recording rather than crops.
+- Ordinary unvoiced frames are zero in Plachtaa's training normalization;
+  -10 is reserved for invalid values. Our regression excludes UV entirely.
+- JDC pitch output is not independently evaluated here; YAAPT can be selected
+  for an alternative label source.
+- Pretrained FACodec model loading and end-to-end audio synthesis have not
+  yet been runtime-validated.
+- Absolute semitone control is extrapolative after per-segment normalization.
