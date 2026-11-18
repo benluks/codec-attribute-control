@@ -1,0 +1,7 @@
+# Compute targets on demand via QC's OnlineResourceMixin.
+dataset_load: [audio]
+resource_providers: []
+online_encoders:
+  f0:
+    _target_: codec_attribute_control.f0_resource.OnlineF0
+    backend: yaapt

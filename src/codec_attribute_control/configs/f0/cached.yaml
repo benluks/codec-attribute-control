@@ -1,0 +1,8 @@
+# Read precomputed [T,1] Hz contours with QC's tensor resource loader.
+dataset_load: [audio, f0]
+resource_providers:
+  - _target_: quick_convert.data.resources.PathResourceProvider
+    name: f0
+    kind: torch_tensor
+    path_template: ${f0_cache_root}/{sample.split}/{sample.utt_id}.pt
+online_encoders: {}

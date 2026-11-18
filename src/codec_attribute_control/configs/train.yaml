@@ -1,0 +1,68 @@
+defaults:
+  - dataset: librispeech
+  - f0: online
+  - optimization: adamw_cosine
+  - _self_
+
+data_root: ???
+batch_size: 8
+num_workers: 2
+max_epochs: 10
+learning_rate: 0.0003
+weight_decay: 0.01
+
+experiment_name: facodec-f0-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+train_split: train-clean-100
+val_split: dev-clean
+
+system:
+  _target_: codec_attribute_control.system.F0ProbeSystem
+  encoder:
+    _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
+    device: cpu
+  head:
+    _target_: codec_attribute_control.head.LinearF0Head
+    input_dim: 256
+  freeze_encoder: true
+  online_encoders: ${f0.online_encoders}
+
+trainer:
+  _target_: quick_convert.training.lightning.trainer.LightningTrainer
+  module:
+    _target_: codec_attribute_control.training.F0ProbeTrainingModule
+    system: ${system}
+    optimization: ${optimization}
+  train_dataloader_kwargs:
+    batch_size: ${batch_size}
+    shuffle: true
+    num_workers: ${num_workers}
+  val_dataloader_kwargs:
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
+  trainer_kwargs:
+    max_epochs: ${max_epochs}
+    accelerator: auto
+    devices: 1
+    logger:
+      _target_: lightning.pytorch.loggers.WandbLogger
+      _partial_: true
+      project: codec-attribute-control
+      name: ${experiment_name}
+      save_dir: ${hydra:runtime.output_dir}
+    callbacks:
+      - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+        logging_interval: step
+      - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+        monitor: val/mae
+        mode: min
+        save_last: true
+        save_top_k: 1
+        filename: best
+
+hydra:
+  searchpath:
+    - pkg://quick_convert.configs
+  run:
+    dir: outputs
+  job:
+    chdir: false
