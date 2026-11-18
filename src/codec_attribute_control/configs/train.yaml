@@ -60,8 +60,6 @@ trainer:
         filename: best
 
 hydra:
-  searchpath:
-    - pkg://quick_convert.configs
   run:
     dir: outputs
   job:
