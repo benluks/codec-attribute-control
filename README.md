@@ -36,6 +36,14 @@ uv run train-probe dataset.root=/path/to/speech
 uv run pytest -q
 ```
 
+FACodec encodes mixed-length batches by default. Set
+`system.encoder.batched=false` to use per-utterance inference.
+Run the codec parity checks with the official pretrained weights:
+
+```bash
+FACODEC_PARITY=1 uv run --extra train --extra facodec pytest -q tests/test_facodec_parity.py
+```
+
 For quick-convert's existing YAAPT fallback:
 
 ```bash
@@ -57,6 +65,6 @@ See [quick-convert reuse and gaps](docs/quick-convert-gaps.md).
 
 ## Status
 
-Training now enters QC's `TrainingPipeline.run()` via `LightningTrainer` and a project-specific `BaseTrainingModule`. FACodec integration remains provisional and has not been model-tested.\n\n
-The draft has not been verified against real FACodec/JDC checkpoints or
-model-backed generated audio; no synthesis results are claimed.
+Training enters QC's `TrainingPipeline.run()` via `LightningTrainer` and
+a project-specific `BaseTrainingModule`. The pretrained FACodec parity
+tests cover quantized streams, code IDs and speaker embeddings.

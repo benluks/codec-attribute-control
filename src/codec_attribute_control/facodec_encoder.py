@@ -4,10 +4,13 @@ from pathlib import Path
 
 import torch
 import torchaudio
+from quick_convert.components.encoders.content.base import (
+    ContentEncoder,
+    ContentFeatures,
+)
 from torch.nn.utils.rnn import pad_sequence
 
-from quick_convert.components.encoders.content.base import ContentEncoder, ContentFeatures
-from .facodec import FACodec, HOP, SAMPLE_RATE
+from .facodec import HOP, SAMPLE_RATE, FACodec
 
 
 @dataclass
@@ -41,8 +44,9 @@ class FACodecContentEncoder(ContentEncoder):
     """
     FEATURE_DIM = 256
 
-    def __init__(self, device="cpu", codec=None):
+    def __init__(self, device="cpu", codec=None, *, batched=True):
         super().__init__(device=device)
+        self.batched = batched
         self.codec = codec if codec is not None else FACodec(device=str(self.device))
 
     @property
@@ -63,11 +67,11 @@ class FACodecContentEncoder(ContentEncoder):
             lengths = torch.full((b,), n, dtype=torch.long, device=waveforms.device)
         if lengths.shape != (b,) or torch.any(lengths <= 0) or torch.any(lengths > n):
             raise ValueError("Invalid waveform lengths")
-        if hasattr(self.codec, "encode_batch"):
+        if self.batched and hasattr(self.codec, "encode_batch"):
             # Standard padded batch: one codec forward, irrespective of lengths.
             # Explicitly clear invalid samples even if the collator used nonzero padding.
             positions = torch.arange(n, device=waveforms.device)
-            clean = waveforms.masked_fill(positions[None, :] >= lengths[:, None], 0)
+            clean = waveforms.masked_fill(positions[None, :] >= lengths.to(waveforms.device)[:, None], 0)
             frame = self.codec.encode_batch(clean, lengths)
             frame_lengths = (lengths.to(frame.combined.device) + HOP - 1) // HOP
             if frame.combined.shape[0] != b:

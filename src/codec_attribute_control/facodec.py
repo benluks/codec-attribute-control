@@ -1,9 +1,10 @@
 """Thin adapter around upstream frozen FACodec; no vendoring or retraining."""
+
 from dataclasses import dataclass
 
-from .amphion_source import ensure_amphion_importable
-
 import torch
+
+from .amphion_source import ensure_amphion_importable
 
 SAMPLE_RATE = 16000
 HOP = 200
@@ -12,10 +13,10 @@ MODEL_ID = "amphion/naturalspeech3_facodec"
 
 @dataclass
 class CodecFrame:
-    combined: torch.Tensor  # [1, C, T]
-    prosody: torch.Tensor   # [1, C, T]
-    content: torch.Tensor   # [1, C, T]
-    residual: torch.Tensor  # [1, C, T]
+    combined: torch.Tensor  # [B, C, T]
+    prosody: torch.Tensor  # [B, C, T]
+    content: torch.Tensor  # [B, C, T]
+    residual: torch.Tensor  # [B, C, T]
     speaker: torch.Tensor
     codes: torch.Tensor
 
@@ -24,7 +25,7 @@ class FACodec(torch.nn.Module):
     def __init__(self, device: str = "cpu"):
         super().__init__()
         ensure_amphion_importable()
-        from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
+        from Amphion.models.codec.ns3_codec import FACodecDecoder, FACodecEncoder
         from huggingface_hub import hf_hub_download
 
         self.device = torch.device(device)
@@ -45,6 +46,9 @@ class FACodec(torch.nn.Module):
             model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
             model.to(self.device).eval().requires_grad_(False)
 
+    def train(self, mode: bool = True):
+        return super().train(False)
+
     @torch.inference_mode()
     def encode(self, waveform: torch.Tensor) -> CodecFrame:
         """Accept mono [samples] at exactly 16kHz; pad to hop multiple."""
@@ -64,34 +68,102 @@ class FACodec(torch.nn.Module):
             raise RuntimeError(f"Expected six quantizer codebooks, got {tuple(ids.shape)}")
         return CodecFrame(total, parts[0], parts[1], parts[2], speaker, ids)
 
+    def _encode_padded(self, waveforms, lengths):
+        if torch.all(lengths == waveforms.shape[-1]):
+            return self.encoder(waveforms)
+
+        from Amphion.models.codec.ns3_codec.facodec import (
+            Activation1d,
+            EncoderBlock,
+            ResidualUnit,
+        )
+
+        def replicate_tail(x, sizes):
+            edge = (sizes - 1).expand(-1, x.shape[1], 1)
+            return torch.where(
+                torch.arange(x.shape[-1], device=x.device) >= sizes,
+                x.gather(-1, edge),
+                x,
+            )
+
+        def apply(layer, x, sizes):
+            if isinstance(layer, (torch.nn.Sequential, EncoderBlock, ResidualUnit)):
+                children = (
+                    layer if isinstance(layer, torch.nn.Sequential) else layer.block
+                )
+                residual = x
+                for child in children:
+                    x, sizes = apply(child, x, sizes)
+                if isinstance(layer, ResidualUnit):
+                    x = residual + x
+                return x, sizes
+            if isinstance(layer, Activation1d):
+                # Both alias-free filters replicate their own last valid input.
+                x = layer.act(layer.upsample(replicate_tail(x, sizes)))
+                x = layer.downsample(replicate_tail(x, sizes * layer.up_ratio))
+                return x, sizes
+            if isinstance(layer, torch.nn.Conv1d):
+                x = x.masked_fill(
+                    torch.arange(x.shape[-1], device=x.device) >= sizes, 0
+                )
+                # Hop-aligned lengths are divisible by each encoder stride.
+                return layer(x), sizes // layer.stride[0]
+            raise TypeError(
+                f"Unsupported FACodec encoder layer: {type(layer).__name__}"
+            )
+
+        return apply(self.encoder.block, waveforms, lengths[:, None, None])[0]
+
+    def _batch_speaker(self, enc, valid, frames):
+        timbre = self.decoder.timbre_encoder
+        # Amphion indexes its positional table by batch row. Single inference
+        # always uses row zero, so broadcast that row across every utterance.
+        x = enc.transpose(1, 2) + timbre.position_emb.pe[:1]
+        padding = ~valid.unsqueeze(-1)
+        for layer in timbre.layers:
+            normalized = layer.ln_1(x)
+            attended, _ = layer.self_attn(
+                normalized,
+                normalized,
+                normalized,
+                key_padding_mask=~valid,
+            )
+            x = x + attended
+            # Attention masking leaves padded queries active. Zero their values
+            # after normalization, before the feed-forward temporal convolution.
+            x = x + layer.ffn(layer.ln_2(x).masked_fill(padding, 0))
+        x = timbre.last_ln(x).masked_fill(padding, 0)
+        return x.sum(dim=1) / frames.unsqueeze(1)
 
     @torch.inference_mode()
-    def encode_batch(self, waveforms: torch.Tensor, lengths: torch.Tensor) -> CodecFrame:
-        """Encode [B, samples] in one GPU forward pass with masked timbre pooling.
-
-        Right padding is excluded from timbre attention and pooling. Convolutional
-        boundary effects near the end of shorter recordings can still differ from
-        independently encoded, unpadded inputs.
-        """
+    def encode_batch(
+        self, waveforms: torch.Tensor, lengths: torch.Tensor
+    ) -> CodecFrame:
+        """Encode a mixed-length mono batch with single-utterance boundaries."""
         if waveforms.ndim != 2 or lengths.shape != (waveforms.shape[0],):
             raise ValueError("Expected waveforms [B, samples] and lengths [B]")
-        if torch.any(lengths <= 0) or torch.any(lengths > waveforms.shape[1]):
+        if (
+            not lengths.numel()
+            or torch.any(lengths <= 0)
+            or torch.any(lengths > waveforms.shape[1])
+        ):
             raise ValueError("Invalid waveform lengths")
         device = next(self.encoder.parameters()).device
         lengths = lengths.to(device=device, dtype=torch.long)
         waveforms = waveforms.to(device=device, dtype=torch.float32)
-        padded_samples = ((waveforms.shape[1] + HOP - 1) // HOP) * HOP
-        waveforms = torch.nn.functional.pad(waveforms, (0, padded_samples - waveforms.shape[1]))
+        positions = torch.arange(waveforms.shape[1], device=device)
+        waveforms = waveforms.masked_fill(positions >= lengths[:, None], 0)
+        padding = (-waveforms.shape[1]) % HOP
+        waveforms = torch.nn.functional.pad(waveforms, (0, padding)).unsqueeze(1)
         frames = (lengths + HOP - 1) // HOP
-        enc = self.encoder(waveforms.unsqueeze(1))
-        if enc.shape[-1] != padded_samples // HOP:
+        enc = self._encode_padded(waveforms, frames * HOP)
+        if enc.shape[-1] != waveforms.shape[-1] // HOP:
             raise RuntimeError("Unexpected FACodec encoder frame count")
         total, ids, _, parts = self.decoder.quantize(enc)
         if len(parts) != 3 or ids.shape[0] != 6:
             raise RuntimeError("Unexpected FACodec quantizer contract")
-        valid = torch.arange(enc.shape[-1], device=device)[None, :] < frames[:, None]
-        timbre = self.decoder.timbre_encoder(enc.transpose(1, 2), valid, None)
-        speaker = (timbre * valid.unsqueeze(-1)).sum(dim=1) / frames.unsqueeze(1)
+        valid = torch.arange(enc.shape[-1], device=device) < frames[:, None]
+        speaker = self._batch_speaker(enc, valid, frames)
         return CodecFrame(total, parts[0], parts[1], parts[2], speaker, ids)
 
     @torch.inference_mode()

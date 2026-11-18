@@ -20,6 +20,7 @@ system:
   encoder:
     _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
     device: cpu
+    batched: true
   head:
     _target_: codec_attribute_control.head.LinearF0Head
     input_dim: 256

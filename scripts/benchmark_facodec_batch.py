@@ -18,7 +18,8 @@ def main():
     args = parser.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     codec = FACodec(device=device)
-    encoder = FACodecContentEncoder(codec=codec)
+    single = FACodecContentEncoder(codec=codec, batched=False)
+    batched = FACodecContentEncoder(codec=codec)
     base = int(args.seconds * 16000)
     lengths = torch.tensor([
         base if args.mode == "equal" else max(200, base - (i % 4) * 2000)
@@ -31,10 +32,10 @@ def main():
             torch.cuda.synchronize()
 
     def old():
-        return [codec.encode(waveforms[i, :int(n)]) for i, n in enumerate(lengths)]
+        return single.encode_waveforms(waveforms, lengths, 16000)
 
     def new():
-        return encoder.encode_waveforms(waveforms, lengths, 16000)
+        return batched.encode_waveforms(waveforms, lengths, 16000)
 
     for label, fn in (("per_utterance", old), ("full_batch", new)):
         fn()
