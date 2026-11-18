@@ -11,10 +11,9 @@ max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
 
-experiment_name: facodec-prosody_f0-${hydra:runtime.choices.dataset}-${train_split}-${f0_mode}
+experiment_name: facodec-prosody_f0-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
-f0_mode: cached
 
 system:
   _target_: codec_attribute_control.system.F0ProbeSystem
@@ -61,6 +60,6 @@ trainer:
 
 hydra:
   run:
-    dir: outputs/${experiment_name}
+    dir: outputs
   job:
     chdir: false
