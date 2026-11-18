@@ -46,7 +46,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
             self._log_validation_curves(f0_hz, predictions, f0_lengths)
             self._validation_curves_logged = True
         self.log(f"{stage}/loss", loss, on_step=stage == "train",
-                 on_epoch=False, batch_size=predictions.shape[0], prog_bar=True)
+                 on_epoch=stage == "val", batch_size=predictions.shape[0], prog_bar=True)
         return ProbeStepOutput(loss=loss)
 
     def on_train_epoch_end(self):
