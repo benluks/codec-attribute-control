@@ -24,13 +24,7 @@ class FACodec(torch.nn.Module):
     def __init__(self, device: str = "cpu"):
         super().__init__()
         ensure_amphion_importable()
-        try:
-            from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
-        except ImportError as error:
-            raise ImportError(
-                "Initialize the Amphion submodule with git submodule update --init and install the facodec extra; "
-                "upstream FACodec dependencies may also be missing."
-            ) from error
+        from Amphion.models.codec.ns3_codec import FACodecEncoder, FACodecDecoder
         from huggingface_hub import hf_hub_download
 
         self.device = torch.device(device)

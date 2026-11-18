@@ -29,12 +29,7 @@ class JDCF0Extractor(F0Extractor):
 
     def __init__(self, checkpoint_path: str | None = None, device: str = "cpu"):
         ensure_amphion_importable()
-        try:
-            from Amphion.models.codec.facodec.modules.JDC.model import JDCNet
-        except ImportError as error:
-            raise ImportError(
-                "Amphion source is required; initialize the Git submodule."
-            ) from error
+        from Amphion.models.codec.facodec.modules.JDC.model import JDCNet
         if checkpoint_path is None:
             try:
                 import Amphion
