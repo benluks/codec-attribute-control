@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --group dev
+      - name: Apply Ruff autofixes and formatting
+        run: |
+          uv run ruff check src tests --fix
+          uv run ruff format src tests
+      - name: Ruff (remaining lint errors)
+        run: uv run ruff check src tests --output-format github
+      - name: Unit tests (no model downloads)
+        run: uv run pytest -q
