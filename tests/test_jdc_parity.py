@@ -14,10 +14,8 @@ from codec_attribute_control.f0_resource import OnlineF0
 from codec_attribute_control.facodec import HOP, SAMPLE_RATE
 
 
-@pytest.fixture(
-    scope="module", params=[(16000, 16000), (12037, 16000)], ids=["equal", "mixed"]
-)
-def jdc_outputs(request):
+@pytest.fixture(scope="module")
+def jdc_checkpoint():
     try:
         source = ensure_amphion_importable()
     except ImportError as exc:
@@ -25,7 +23,14 @@ def jdc_outputs(request):
     checkpoint = source / JDC_CHECKPOINT_RELATIVE
     if not checkpoint.is_file():
         pytest.skip("Pretrained JDC checkpoint is unavailable")
-    online = OnlineF0(checkpoint_path=str(checkpoint))
+    return str(checkpoint)
+
+
+@pytest.fixture(
+    scope="module", params=[(16000, 16000), (12037, 16000)], ids=["equal", "mixed"]
+)
+def jdc_outputs(request, jdc_checkpoint):
+    online = OnlineF0(checkpoint_path=jdc_checkpoint)
     extractor = online.extractor
     lengths = torch.tensor(request.param)
     recordings = [
@@ -92,3 +97,13 @@ def test_jdc_batched_pitch_matches_single(jdc_outputs):
             equal_nan=True,
         )
         assert torch.isnan(batched_pitch[i, single.numel() :]).all()
+
+
+def test_corrected_jdc_calibration(jdc_checkpoint):
+    from codec_attribute_control.f0 import make_extractor
+
+    extractor = make_extractor("jdc_corrected", checkpoint_path=jdc_checkpoint)
+    t = torch.arange(24000) / 24000
+    signal = 0.08 * sum(torch.sin(2 * torch.pi * 200 * k * t) / k for k in range(1, 7))
+    pitch = extractor.extract(signal, 24000)
+    assert pitch[10:-10].median().item() == pytest.approx(200.0, abs=3)

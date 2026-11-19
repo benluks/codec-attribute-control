@@ -10,11 +10,11 @@ The immediate experiment predicts **relative pitch movement within a recording**
 
 1. Quick Convert's `BaseDataset` discovers LibriSpeech recordings and loads mono audio at 16 kHz.
 2. Frozen pretrained FACodec produces post-quantization prosody features at approximately 80 frames/s; the head maps `[B,T,256]` to `[B,T]`.
-3. Pretrained JDC computes raw F0 in Hz. Its mel front end operates at 24 kHz, with a 300-sample hop (12.5 ms). Online F0 resamples the 16 kHz batch, performs batched mel extraction and JDC inference, then aligns to FACodec's 200-sample hop at 16 kHz (also 12.5 ms).
+3. WORLD or JDC computes raw F0 in Hz. The JDC mel front end operates at 24 kHz, with a 300-sample hop (12.5 ms). Online F0 resamples the 16 kHz batch, performs batched mel extraction and JDC inference, then aligns to FACodec's 200-sample hop at 16 kHz (also 12.5 ms).
 4. Invalid/unvoiced frames are represented as NaN in raw F0. `prepare_f0_targets` applies voiced log2-F0 recording-wise z-score normalization and excludes unvoiced, invalid, or insufficiently varying segments.
 5. The linear head is trained with masked MSE on valid voiced frames only. The training module checks that the F0 and codec valid frame lengths agree exactly.
 
-**Important:** matching nominal 80 Hz frame rates does not guarantee every boundary frame is identical. Batched JDC padding can affect shorter utterances' end frames. Run parity checks when changing extraction or padding.
+**Important:** matching nominal 80 Hz frame rates does not guarantee every boundary frame is identical. Run parity checks when changing the frontend, padding, or frame alignment.
 
 ## 3. Online versus cached labels
 
@@ -22,7 +22,7 @@ Both modes provide the same F0 resource (`[B,T,1]` Hz plus valid lengths) to the
 
 | Mode | Configuration | What happens |
 | --- | --- | --- |
-| Online | `f0=online` (default) | `OnlineF0` runs JDC during training |
+| Online | `f0=online` (default) | `OnlineF0` runs the selected backend during training |
 | Cached | `f0=cached` | QC `PathResourceProvider` loads `{split}/{utt_id}.pt` |
 
 To precompute:
@@ -30,23 +30,36 @@ To precompute:
 ```bash
 uv run --extra train --extra facodec precompute-f0 \
   data_root=/path/to/collections \
-  f0_cache_root=./outputs/precomputed/f0/jdc \
+  f0_backend=world \
   splits='[train-clean-100,dev-clean]' \
-  batch_size=8 device=cuda
+  batch_size=8
 ```
 
-This invokes Quick Convert's `PrecomputeFeaturesPipeline` through its existing `execute_pipeline` entry point. The project-specific `JDCF0PrecomputeExtractor` is a thin `extract_batch` adapter over `OnlineF0`. QC handles dataset iteration, provenance checking, atomic writes, skip-existing resumption, and `manifest.jsonl`. Each `.pt` file stores the unpadded `[T,1]` Hz contour.
+This invokes Quick Convert's `PrecomputeFeaturesPipeline` through its existing `execute_pipeline` entry point. The project-specific `F0PrecomputeExtractor` is a thin `extract_batch` adapter over `OnlineF0`. QC handles dataset iteration, provenance checking, atomic writes, skip-existing resumption, and `manifest.jsonl`. Each `.pt` file stores the unpadded `[T,1]` Hz contour.
 
-The default cache directory becomes `./outputs/precomputed/f0/jdc` once PR #15 merges. Before then, override `f0_cache_root` explicitly in **both** commands. The output root is project-relative, not derived from the speech dataset directory.
+Select the backend with `f0_backend` for precomputation and both trainers:
+
+| Backend | Target recipe |
+| --- | --- |
+| `world` | WORLD DIO + StoneMask at 80 Hz, with WORLD voiced/unvoiced decisions. Runs on CPU. |
+| `jdc_corrected` | JDC on 24 kHz audio with the checkpoint-matched 16 kHz mel filter bank. |
+| `jdc` (default) | Original JDC preprocessing for comparison and existing caches. |
+
+Caches default to `./outputs/precomputed/f0/<backend>`. Each contour stores Hz
+for voiced frames and `NaN` for unvoiced frames. The regression loss normalizes
+only voiced frames. The code classifier uses the same contour and voicing mask.
 
 ```bash
+uv run --extra train --extra facodec precompute-codes data_root=/path/to/collections
 uv run --extra train --extra facodec train-probe \
-  data_root=/path/to/collections \
-  f0=cached \
-  f0_cache_root=./outputs/precomputed/f0/jdc
+  data_root=/path/to/collections f0=cached f0_backend=world codes=cached head=contextual
 ```
 
-The cache is tied to the dataset and extractor identity. Do not reuse it for changed weights or audio revisions without an appropriate new cache identity/output directory. QC supports `+pipeline.cache_key=my-revision` for additional provenance when needed.
+The 17-frame contextual head sees roughly 100 ms on either side of each frame.
+With both caches selected, the probe reads F0 and code IDs without loading audio.
+It reconstructs the same post-VQ prosody vectors with a frozen codebook lookup.
+
+The cache is tied to the dataset and extractor identity. Do not reuse it for changed weights or audio revisions without an appropriate new cache identity/output directory. QC supports `cache_key=my-revision` for additional provenance when needed.
 
 ## 4. Training and evaluation
 

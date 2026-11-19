@@ -4,6 +4,6 @@ dataset_load: [prosody_codes]
 resource_providers:
   - _target_: quick_convert.data.resources.PathResourceProvider
     name: prosody_codes
-    kind: torch_tensor
+    kind: token_ids
     path_template: ${codes_cache_root}/{sample.split}/{sample.utt_id}.pt
 encoder: null

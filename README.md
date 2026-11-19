@@ -4,7 +4,7 @@
 
 The first experiment probes **pitch (F0)** in the **post-quantization prosody representation** of pretrained Amphion NaturalSpeech 3 FACodec. We freeze FACodec and train a single linear projection to predict framewise pitch. A successful probe shows that pitch information is *linearly accessible*; it does **not** establish causal control or disentanglement.
 
-**Pipeline:** 16 kHz speech → frozen FACodec prosody features → linear F0 head. In parallel, pretrained JDC produces aligned 80 Hz F0 labels in Hz. We normalize voiced log2 F0 per recording, then optimize masked mean squared error over voiced frames.
+**Pipeline:** 16 kHz speech → frozen FACodec prosody features → linear F0 head. The selected pitch backend produces frame-aligned F0 targets at 80 Hz. We normalize voiced log2 F0 per recording, then optimize masked mean squared error over voiced frames.
 
 ## Quick start
 
@@ -16,14 +16,21 @@ uv run --extra train --extra facodec train-probe data_root=/path/to/collections
 
 `data_root` is the parent of `librispeech/LibriSpeech`. The JDC checkpoint is read from the Amphion source tree (`models/codec/facodec/modules/JDC/bst.t7`). FACodec pretrained weights are also required. The default training split is `train-clean-100`, with `dev-clean` for validation.
 
-For faster repeated training, precompute JDC targets with Quick Convert's existing precompute pipeline, then switch one config group:
+For a fully cached F0 regression probe, precompute WORLD pitch and FACodec prosody
+codes, then use the 17-frame contextual head:
 
 ```bash
-uv run --extra train --extra facodec precompute-f0 data_root=/path/to/collections
-uv run --extra train --extra facodec train-probe data_root=/path/to/collections f0=cached
+uv run --extra train --extra facodec precompute-f0 data_root=/path/to/collections f0_backend=world
+uv run --extra train --extra facodec precompute-codes data_root=/path/to/collections
+uv run --extra train --extra facodec train-probe data_root=/path/to/collections \
+  f0=cached f0_backend=world codes=cached head=contextual
 ```
 
-The default cache is **`./outputs/precomputed/f0/jdc` after PR #15**; until that fix is merged, pass `f0_cache_root=./outputs/precomputed/f0/jdc` to both commands. See [the experiment guide](docs/f0-probe.md) for exact cache behavior, configuration, metrics, and limitations.
+WORLD runs on CPU and stores voiced pitch in Hz and unvoiced frames as `NaN`.
+Use `f0_backend=jdc_corrected` for JDC with the calibrated mel filter bank or
+`f0_backend=jdc` for the original JDC recipe and existing caches. Use the same
+backend in precomputation and training. Each backend has its own directory under
+`./outputs/precomputed/f0`. See [the experiment guide](docs/f0-probe.md).
 
 ## Validation and scope
 
@@ -63,7 +70,7 @@ uv run --extra train --extra facodec train-probe data_root=/cfs/collections targ
 
 ## Interchangeable F0 heads
 
-Use Hydra `head=mlp` (default) or `head=facodec_cnn`. The linear probe is the MLP with `head.hidden_sizes=[]`; nonempty hidden sizes add nonlinear layers. The `head.context_size` setting accepts positive odd frame counts (1, 3, 5, ...). Neighboring prosody frames are concatenated to predict the **center frame** F0. Sequence edges are replicated; outputs remain aligned at 80 Hz. Padded batch frames remain masked by the existing loss.
+Use Hydra `head=mlp` (default), `head=contextual`, or `head=facodec_cnn`. The linear probe is the MLP with `head.hidden_sizes=[]`; nonempty hidden sizes add nonlinear layers. The `head.context_size` setting accepts positive odd frame counts (1, 3, 5, ...). Neighboring prosody frames are concatenated to predict the **center frame** F0. Sequence edges are replicated; outputs remain aligned at 80 Hz. Padded batch frames remain masked by the existing loss.
 
 ```bash
 # Linear, one frame (default)
@@ -83,7 +90,7 @@ The CNN uses Amphion's original `CNNLSTM` class, including SnakeBeta and residua
 
 ## Pitch-to-prosody-code baseline
 
-Train a pitch-conditioned classifier for FACodec's **first (prosody) codebook** without changing the existing F0 probes. Frozen FACodec provides integer targets; the existing online or cached JDC resource provides frame-aligned F0. Input is **absolute log₂ F0 in Hz plus a voicing bit**, including unvoiced frames. A centered window is flattened and passed through a GELU MLP to predict one of 1024 code IDs per frame. Train with cross-entropy on valid frames (including unvoiced); log code accuracy and loss. This is a *code-reconstruction baseline*, not yet a pitch-editing decoder or a demonstration of control.
+Train a pitch-conditioned classifier for FACodec's **first (prosody) codebook** without changing the existing F0 probes. Frozen FACodec provides integer targets; the online or cached pitch resource provides frame-aligned F0. Input is **absolute log₂ F0 in Hz plus a voicing bit**, including unvoiced frames. A centered window is flattened and passed through a GELU MLP to predict one of 1024 code IDs per frame. Train with cross-entropy on valid frames (including unvoiced); log code accuracy and loss. This is a *code-reconstruction baseline*, not yet a pitch-editing decoder or a demonstration of control.
 
 ```bash
 uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collections
@@ -101,4 +108,4 @@ uv run --extra facodec precompute-codes data_root=/cfs/collections
 uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collections codes=cached
 ```
 
-Both commands default to `./outputs/precomputed/prosody_codes/facodec`; override `codes_cache_root` in either config. The cached training path does **not** instantiate FACodec. JDC F0 can independently be online (`f0=online`) or precomputed (`f0=cached`). For the lightest training, precompute both and run `train-pitch-codes codes=cached f0=cached`. Note that the dataset may still load audio by default; the code labels themselves are tiny.
+Both commands default to `./outputs/precomputed/prosody_codes/facodec`; override `codes_cache_root` in either config. The pitch-to-code classifier reads code IDs directly. With both caches selected, `train-pitch-codes codes=cached f0=cached f0_backend=world` trains without loading audio. The F0 regression probe projects the same cached IDs through the frozen prosody codebook.

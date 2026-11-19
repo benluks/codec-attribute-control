@@ -1,4 +1,4 @@
-"""Classification training with frozen FACodec code labels and JDC F0."""
+"""Classification training with frozen FACodec code labels and aligned F0."""
 import torch
 import torch.nn.functional as F
 from quick_convert.training.lightning.modules.base import BaseTrainingModule

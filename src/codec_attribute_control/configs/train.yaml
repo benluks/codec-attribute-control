@@ -1,12 +1,15 @@
 defaults:
   - dataset: librispeech
   - f0: online
+  - codes: online
   - optimization: adamw_cosine
   - head: mlp
   - _self_
 
 data_root: ???
-f0_cache_root: ./outputs/precomputed/f0/jdc
+f0_backend: jdc
+f0_cache_root: ./outputs/precomputed/f0/${f0_backend}
+codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
 batch_size: 8
 num_workers: 24
 max_epochs: 10
@@ -14,15 +17,13 @@ learning_rate: 0.0003
 weight_decay: 0.01
 target_mode: normalized_log2  # normalized_log2 or log2 (absolute log2 Hz)
 
-experiment_name: facodec-f0-${hydra:runtime.choices.head}-ctx${oc.select:head.context_size,na}-hidden${oc.select:head.hidden_sizes,na}-${oc.select:head.activation,na}-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-f0-${hydra:runtime.choices.head}-ctx${oc.select:head.context_size,na}-hidden${oc.select:head.hidden_sizes,na}-${oc.select:head.activation,na}-${target_mode}-${f0_backend}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
 
 system:
   _target_: codec_attribute_control.system.F0ProbeSystem
-  encoder:
-    _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
-    batched: true
+  encoder: ${codes.encoder}
   head: ${head}
   freeze_encoder: true
   online_encoders: ${f0.online_encoders}

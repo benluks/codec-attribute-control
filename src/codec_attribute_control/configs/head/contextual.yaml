@@ -1,0 +1,6 @@
+# A linear probe over 17 frames (approximately 100 ms on either side).
+_target_: codec_attribute_control.head.MLPF0Head
+input_dim: 256
+hidden_sizes: []
+activation: gelu
+context_size: 17

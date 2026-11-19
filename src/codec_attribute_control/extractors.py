@@ -26,7 +26,10 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
     avoid an unverified Hugging Face model identifier.
     """
 
-    def __init__(self, checkpoint_path: str | None = None, device: str = "cpu"):
+    def __init__(
+        self, checkpoint_path: str | None = None, device: str = "cpu",
+        *, mel_sample_rate: int = JDC_SAMPLE_RATE,
+    ):
         super().__init__()
         ensure_amphion_importable()
         from Amphion.models.codec.facodec.modules.JDC.model import JDCNet
@@ -49,7 +52,7 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
         model.load_state_dict(state["net"])
         self.model = model.to(device).eval().requires_grad_(False)
         self.to_mel = torchaudio.transforms.MelSpectrogram(
-            sample_rate=JDC_SAMPLE_RATE, n_fft=2048, win_length=1200,
+            sample_rate=mel_sample_rate, n_fft=2048, win_length=1200,
             hop_length=JDC_HOP, n_mels=80,
         ).to(device)
 
@@ -159,4 +162,25 @@ class JDCF0Extractor(torch.nn.Module, F0Extractor):
         return self.extract(sample.waveform, int(sample.sample_rate))
 
 
-__all__ = ["JDCF0Extractor", "YAAPTF0Extractor"]
+class WORLDF0Extractor(F0Extractor):
+    """DIO + StoneMask pitch with WORLD's own voiced/unvoiced decision."""
+
+    sample_rate = 16_000
+    hop_length = 200
+
+    def __init__(self):
+        import pyworld
+
+        self.world = pyworld
+
+    def extract(self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
+        if waveform.ndim != 1 or sample_rate != self.sample_rate:
+            raise ValueError("WORLD expects a mono waveform at 16 kHz")
+        audio = waveform.detach().to(device="cpu", dtype=torch.float64).contiguous().numpy()
+        f0, time = self.world.dio(
+            audio, sample_rate, f0_floor=60.0, f0_ceil=640.0, frame_period=12.5,
+        )
+        return torch.from_numpy(self.world.stonemask(audio, f0, time, sample_rate)).float()
+
+
+__all__ = ["JDCF0Extractor", "WORLDF0Extractor", "YAAPTF0Extractor"]
