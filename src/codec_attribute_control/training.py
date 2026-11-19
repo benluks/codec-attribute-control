@@ -16,8 +16,11 @@ class ProbeStepOutput:
 
 
 class F0ProbeTrainingModule(BaseTrainingModule):
-    def __init__(self, system, optimization):
+    def __init__(self, system, optimization, target_mode="normalized_log2"):
         super().__init__(optimization=optimization, enable_grad_norm_logging=True)
+        if target_mode not in ("normalized_log2", "log2"):
+            raise ValueError(f"Unsupported F0 target mode: {target_mode}")
+        self.target_mode = target_mode
         self.system = system
         self.train_metrics = F0ProbeMetrics()
         self.val_metrics = F0ProbeMetrics()
@@ -36,7 +39,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         f0_lengths = resource.lengths.to(predictions.device)
         if not torch.equal(f0_lengths, feature_lengths.to(predictions.device)):
             raise ValueError("F0 and encoder valid frame lengths differ")
-        targets, voiced = prepare_f0_targets(f0_hz.to(predictions.device), f0_lengths)
+        targets, voiced = prepare_f0_targets(f0_hz.to(predictions.device), f0_lengths, target_mode=self.target_mode)
         valid = voiced & (torch.arange(predictions.shape[1], device=predictions.device)[None, :]
                           < f0_lengths[:, None])
         loss = self.system.head.loss(predictions, targets, valid)
@@ -67,6 +70,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
             f0_hz.detach().cpu().numpy(),
             predictions.detach().cpu().numpy(),
             lengths.detach().cpu().numpy(),
+            target_mode=self.target_mode,
         )
         if figure is None:
             return
@@ -80,6 +84,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
 
     def _log_epoch_metrics(self, stage: str, metrics: F0ProbeMetrics):
         for name, value in metrics.compute().items():
-            self.log(f"{stage}/{name}", value, on_step=False, on_epoch=True,
-                     prog_bar=name == "normalized_log2_f0_mae", sync_dist=False)
+            metric_name = name.replace("normalized_log2_f0", "log2_f0") if self.target_mode == "log2" else name
+            self.log(f"{stage}/{metric_name}", value, on_step=False, on_epoch=True,
+                     prog_bar=metric_name.endswith("_mae"), sync_dist=False)
         metrics.reset()

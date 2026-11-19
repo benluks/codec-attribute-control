@@ -9,12 +9,14 @@ import torch
 from .targets import f0_target
 
 
-def prepare_f0_targets(f0_hz: torch.Tensor, lengths: torch.Tensor):
+def prepare_f0_targets(f0_hz: torch.Tensor, lengths: torch.Tensor, target_mode: str = "normalized_log2"):
     """Normalize each valid segment, returning [B,T] targets and voiced mask.
 
     Unvoiced/invalid frames are excluded from loss. Segments with insufficient
     F0 variation contribute no supervised frames.
     """
+    if target_mode not in ("normalized_log2", "log2"):
+        raise ValueError(f"Unsupported F0 target mode: {target_mode}")
     if f0_hz.ndim != 2 or lengths.ndim != 1 or lengths.numel() != f0_hz.shape[0]:
         raise ValueError("Expected f0_hz [B,T] and lengths [B]")
     if torch.any(lengths < 0) or torch.any(lengths > f0_hz.shape[1]):
@@ -25,12 +27,19 @@ def prepare_f0_targets(f0_hz: torch.Tensor, lengths: torch.Tensor):
         if not length:
             continue
         hz = f0_hz[i, :length].detach().cpu().numpy()
-        try:
-            normalized, _ = f0_target(hz)
-        except ValueError:
-            continue
-        target = torch.as_tensor(normalized, dtype=torch.float32, device=f0_hz.device)
-        valid = target != -10.0
+        if target_mode == "log2":
+            valid_np = np.isfinite(hz) & (hz > 5.0)
+            values = np.zeros_like(hz, dtype=np.float32)
+            values[valid_np] = np.log2(hz[valid_np]).astype(np.float32)
+        else:
+            try:
+                normalized, _ = f0_target(hz)
+            except ValueError:
+                continue
+            valid_np = normalized != -10.0
+            values = np.where(valid_np, normalized, 0.0)
+        target = torch.as_tensor(values, dtype=torch.float32, device=f0_hz.device)
+        valid = torch.as_tensor(valid_np, dtype=torch.bool, device=f0_hz.device)
         targets[i, :length] = torch.where(valid, target, 0.0)
         voiced[i, :length] = valid
     return targets, voiced
