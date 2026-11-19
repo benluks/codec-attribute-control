@@ -17,8 +17,7 @@ ConfigStore.instance().store(
 )
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="train")
-def main(cfg):
+def run_training(cfg):
     providers = instantiate(cfg.f0.resource_providers)
     def dataset(split):
         return instantiate(cfg.dataset, splits=[split], load=cfg.f0.dataset_load,
@@ -37,6 +36,11 @@ def main(cfg):
     pipeline.write_config(OmegaConf.to_yaml(cfg, resolve=True))
     pipeline.log_config(OmegaConf.to_container(cfg, resolve=True))
     pipeline.run()
+
+
+@hydra.main(version_base=None, config_path="configs", config_name="train")
+def main(cfg):
+    run_training(cfg)
 
 
 if __name__ == "__main__":
