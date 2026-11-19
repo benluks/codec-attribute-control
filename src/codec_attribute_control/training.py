@@ -72,6 +72,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         self.align_f0_to_features = align_f0_to_features
         self.system = system
         self.train_metrics = F0ProbeMetrics()
+        self.train_step_metrics = F0ProbeMetrics()
         self.val_metrics = F0ProbeMetrics()
         self._validation_curves_logged = False
 
@@ -104,6 +105,13 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         loss = self.system.head.loss(predictions, targets, valid)
         metrics = self.train_metrics if stage == "train" else self.val_metrics
         metrics.update(predictions, targets, valid)
+        if stage == "train":
+            self.train_step_metrics.update(predictions, targets, valid)
+            for name, value in self.train_step_metrics.compute().items():
+                metric_name = name.replace("normalized_log2_f0", "log2_f0") if self.target_mode == "log2" else name
+                self.log(f"train/{metric_name}_step", value, on_step=True, on_epoch=False,
+                         batch_size=predictions.shape[0])
+            self.train_step_metrics.reset()
         if stage == "val" and not self._validation_curves_logged and not self.trainer.sanity_checking:
             self._log_validation_curves(f0_hz, predictions, f0_lengths)
             self._validation_curves_logged = True
