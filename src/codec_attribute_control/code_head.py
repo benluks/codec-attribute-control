@@ -21,11 +21,9 @@ class PitchCodeHead(nn.Module):
         self.network = nn.Sequential(*layers)
 
     def forward(self, f0_hz, lengths=None):
-        if f0_hz.ndim != 2:
-            raise ValueError("Expected F0 [B,T] in Hz")
-        voiced = torch.isfinite(f0_hz) & (f0_hz > 5)
-        log_pitch = torch.where(voiced, f0_hz.clamp_min(5).log2(), 0.)
-        x = torch.stack([log_pitch, voiced.to(log_pitch.dtype)], dim=-1)
+        if f0_hz.ndim != 3 or f0_hz.shape[-1] != 2:
+            raise ValueError("Expected pitch features [B,T,2]")
+        x = f0_hz
         if self.context_size > 1:
             k = self.context_size // 2
             x = F.pad(x.transpose(1, 2), (k, k), mode="replicate")
@@ -51,7 +49,7 @@ class ResidualDilatedBlock(nn.Module):
 class GlobalContextPitchCodeHead(nn.Module):
     """Dilated CNN with masked utterance-wide statistics for code classification."""
 
-    def __init__(self, codebook_size=1024, hidden_size=128, dilations=(1, 2, 4, 8, 16, 32)):
+    def __init__(self, codebook_size=1024, hidden_size=128, dilations=(1, 2, 4, 8, 16, 32), normalization='none', global_mean=None, global_std=None):
         super().__init__()
         self.input_projection = nn.Conv1d(2, hidden_size, 1)
         self.blocks = nn.ModuleList([ResidualDilatedBlock(hidden_size, d) for d in dilations])
@@ -62,17 +60,15 @@ class GlobalContextPitchCodeHead(nn.Module):
         )
 
     def forward(self, f0_hz, lengths=None):
-        if f0_hz.ndim != 2:
-            raise ValueError("Expected F0 [B,T] in Hz")
-        b, t = f0_hz.shape
+        if f0_hz.ndim != 3 or f0_hz.shape[-1] != 2:
+            raise ValueError("Expected pitch features [B,T,2]")
+        b, t, _ = f0_hz.shape
         if lengths is None:
             lengths = torch.full((b,), t, device=f0_hz.device, dtype=torch.long)
         if lengths.shape != (b,) or torch.any(lengths < 1) or torch.any(lengths > t):
-            raise ValueError("Invalid F0 sequence lengths")
+            raise ValueError("Invalid lengths")
         mask = torch.arange(t, device=f0_hz.device)[None, :] < lengths[:, None]
-        voiced = torch.isfinite(f0_hz) & (f0_hz > 5) & mask
-        pitch = torch.where(voiced, f0_hz.clamp_min(5).log2(), 0.)
-        x = self.input_projection(torch.stack([pitch, voiced.to(pitch.dtype)], dim=1))
+        x = self.input_projection(f0_hz.transpose(1, 2))
         m = mask.unsqueeze(1)
         for block in self.blocks:
             x = block(x * m) * m

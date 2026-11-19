@@ -1,0 +1,4 @@
+_target_: codec_attribute_control.pitch_transform.PitchInputTransform
+normalization: none
+global_mean: null
+global_std: null
