@@ -33,6 +33,9 @@ def make_extractor(backend: str, *, device: str = "cpu", checkpoint_path: str | 
         from .extractors import JDCF0Extractor
         kwargs = {"mel_sample_rate": SAMPLE_RATE} if backend == "jdc_corrected" else {}
         return JDCF0Extractor(checkpoint_path=checkpoint_path, device=device, **kwargs)
+    if backend == "praat":
+        from .extractors import PraatF0Extractor
+        return PraatF0Extractor()
     if backend == "world":
         from .extractors import WORLDF0Extractor
 
@@ -40,4 +43,4 @@ def make_extractor(backend: str, *, device: str = "cpu", checkpoint_path: str | 
     if backend == "yaapt":
         from quick_convert.components.features.f0.yaapt import YAAPTF0Extractor
         return YAAPTF0Extractor(zero_on_failure=False)
-    raise ValueError(f"F0 backend must be 'world', 'jdc_corrected', 'jdc' or 'yaapt', got {backend!r}")
+    raise ValueError(f"F0 backend must be 'praat', 'world', 'jdc_corrected', 'jdc' or 'yaapt', got {backend!r}")

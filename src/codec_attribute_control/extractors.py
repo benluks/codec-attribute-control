@@ -183,4 +183,60 @@ class WORLDF0Extractor(F0Extractor):
         return torch.from_numpy(self.world.stonemask(audio, f0, time, sample_rate)).float()
 
 
-__all__ = ["JDCF0Extractor", "WORLDF0Extractor", "YAAPTF0Extractor"]
+class PraatF0Extractor(F0Extractor):
+    """Amphion-style Praat autocorrelation pitch with exact timestamp alignment.
+
+    Matches Amphion's parselmouth recipe: to_pitch_ac, 0.6 voicing
+    threshold, configurable pitch bounds, and 12.5 ms time step.
+    Praat pitch frames start after time zero, so sample using pitch.xs()
+    instead of treating the first Praat frame as t=0.
+    """
+
+    sample_rate = 16_000
+    hop_length = 200
+
+    def __init__(self, f0_min=60.0, f0_max=640.0, voicing_threshold=0.6):
+        if not 0 < f0_min < f0_max:
+            raise ValueError("Expected 0 < f0_min < f0_max")
+        self.f0_min = float(f0_min)
+        self.f0_max = float(f0_max)
+        self.voicing_threshold = float(voicing_threshold)
+
+    def extract(self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
+        import numpy as np
+        import parselmouth
+
+        if waveform.ndim != 1 or sample_rate != self.sample_rate:
+            raise ValueError("Praat expects mono 16 kHz audio")
+        samples = waveform.detach().cpu().double().contiguous().numpy()
+        n_frames = (len(samples) + self.hop_length - 1) // self.hop_length
+        if n_frames == 0:
+            return torch.empty(0, dtype=torch.float32)
+        pitch = parselmouth.Sound(samples, sampling_frequency=sample_rate).to_pitch_ac(
+            time_step=self.hop_length / sample_rate,
+            voicing_threshold=self.voicing_threshold,
+            pitch_floor=self.f0_min,
+            pitch_ceiling=self.f0_max,
+        )
+        times = pitch.xs()
+        values = pitch.selected_array["frequency"]
+        target_times = np.arange(n_frames) * self.hop_length / sample_rate
+        if not len(times):
+            return torch.full((n_frames,), float("nan"))
+        # Nearest neighbor retains voicing decisions without interpolating
+        # across unvoiced regions; frames outside Praat's support stay NaN.
+        nearest = np.searchsorted(times, target_times)
+        nearest = np.clip(nearest, 0, len(times) - 1)
+        left = np.maximum(nearest - 1, 0)
+        nearest = np.where(
+            np.abs(times[left] - target_times) <= np.abs(times[nearest] - target_times),
+            left, nearest,
+        )
+        result = values[nearest].astype(np.float32, copy=True)
+        result[(target_times < times[0] - self.hop_length / sample_rate / 2)
+               | (target_times > times[-1] + self.hop_length / sample_rate / 2)
+               | (result <= 5.0)] = np.nan
+        return torch.from_numpy(result)
+
+
+__all__ = ["JDCF0Extractor", "WORLDF0Extractor", "PraatF0Extractor", "YAAPTF0Extractor"]

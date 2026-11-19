@@ -9,10 +9,17 @@ import torch
 from quick_convert.pipelines.precompute_features import PrecomputeFeaturesPipeline
 from torch import nn
 
-from .extractors import WORLDF0Extractor
+from .extractors import WORLDF0Extractor, PraatF0Extractor
 from .f0 import aligned_pitch
 from .f0_resource import OnlineF0
 from .facodec import HOP, SAMPLE_RATE
+
+
+def _cpu_pitch_contour(task):
+    waveform, backend = task
+    extractor = WORLDF0Extractor() if backend == "world" else PraatF0Extractor()
+    frames = (len(waveform) + HOP - 1) // HOP
+    return aligned_pitch(extractor, torch.from_numpy(waveform), SAMPLE_RATE, frames)
 
 
 def _world_contour(waveform):
@@ -65,8 +72,8 @@ class PitchPrecomputePipeline(PrecomputeFeaturesPipeline):
             raise ValueError("pitch_workers must be a positive integer")
         if pitch_workers == 1:
             return super().run()
-        if not isinstance(self.extractor.online.extractor, WORLDF0Extractor):
-            raise TypeError("pitch_workers > 1 requires f0_backend=world")
+        if not isinstance(self.extractor.online.extractor, (WORLDF0Extractor, PraatF0Extractor)):
+            raise TypeError("pitch_workers > 1 requires f0_backend=world or praat")
 
         # Spawn independent processes instead of forking a Torch runtime that
         # may already have active threads or a CUDA context.
@@ -101,8 +108,8 @@ class F0PrecomputeExtractor(nn.Module):
             waveforms = batch.waveforms.detach().cpu().numpy()
             lengths = batch.lengths.tolist()
             contours = self.pitch_pool.map(
-                _world_contour,
-                (row[:n] for row, n in zip(waveforms, lengths, strict=True)),
+                _cpu_pitch_contour,
+                ((row[:n], "praat" if isinstance(self.online.extractor, PraatF0Extractor) else "world") for row, n in zip(waveforms, lengths, strict=True)),
             )
             return [torch.from_numpy(pitch).unsqueeze(-1) for pitch in contours]
         result = self.online(batch)
