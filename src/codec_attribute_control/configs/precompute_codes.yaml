@@ -5,8 +5,8 @@ defaults:
 data_root: ???
 codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
 splits: [train-clean-100, dev-clean]
-batch_size: 8
-num_workers: 4
+batch_size: 128
+num_workers: 24
 device: cuda
 cache_key: null
 

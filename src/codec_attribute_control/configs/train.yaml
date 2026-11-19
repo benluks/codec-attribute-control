@@ -7,7 +7,7 @@ defaults:
 
 data_root: ???
 f0_cache_root: ./outputs/precomputed/f0/jdc
-batch_size: 8
+batch_size: 128
 num_workers: 24
 max_epochs: 10
 learning_rate: 0.0003
