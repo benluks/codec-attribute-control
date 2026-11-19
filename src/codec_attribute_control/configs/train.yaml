@@ -14,7 +14,7 @@ learning_rate: 0.0003
 weight_decay: 0.01
 target_mode: normalized_log2  # normalized_log2 or log2 (absolute log2 Hz)
 
-experiment_name: facodec-f0-${hydra:runtime.choices.head}-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-f0-${hydra:runtime.choices.head}-ctx${oc.select:head.context_size,na}-hidden${oc.select:head.hidden_sizes,na}-${oc.select:head.activation,na}-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
 
