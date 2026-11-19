@@ -63,17 +63,20 @@ uv run --extra train --extra facodec train-probe data_root=/cfs/collections targ
 
 ## Interchangeable F0 heads
 
-Choose the probe architecture with the Hydra `head` config group. The same FACodec prosody features, target modes, voiced-frame MSE, QC training pipeline, and evaluation apply to every head:
+Use Hydra `head=mlp` (default) or `head=facodec_cnn`. The linear probe is the MLP with `head.hidden_sizes=[]`; nonempty hidden sizes add nonlinear layers. The `head.context_size` setting accepts positive odd frame counts (1, 3, 5, ...). Neighboring prosody frames are concatenated to predict the **center frame** F0. Sequence edges are replicated; outputs remain aligned at 80 Hz. Padded batch frames remain masked by the existing loss.
 
 ```bash
-# Framewise linear (default)
-uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=linear
+# Linear, one frame (default)
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=mlp
 
-# Framewise MLP (128 hidden units, GELU)
-uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=mlp batch_size=128
+# Linear, centered three-frame context
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=mlp head.context_size=3
 
-# Original FACodec temporal CNN architecture (randomly initialized)
-uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=facodec_cnn batch_size=128
+# MLP, centered three-frame context
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=mlp 'head.hidden_sizes=[128]' head.context_size=3
+
+# Original FACodec temporal CNN (random initialization)
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=facodec_cnn
 ```
 
-Each architecture has its own `src/codec_attribute_control/configs/head/*.yaml`. Override MLP width with `'head.hidden_sizes=[128,64]'` and activation with `head.activation=tanh`. The `facodec_cnn` head uses Amphion's original `CNNLSTM` implementation (three residual convolutional blocks, SnakeBeta and two output projections); **despite its name, it has no recurrent LSTM**. Only its F0 output is supervised, and weights are newly initialized rather than copied from the pretrained FACodec decoder. The architecture name is included in W&B run names. The frozen FACodec encoder, targets, and loss are unchanged.
+The CNN uses Amphion's original `CNNLSTM` class, including SnakeBeta and residual dilated convolutions; despite its name it has no LSTM. It trains its F0 output, not its voicing output. The frozen encoder and training pipeline are shared. Architecture appears in W&B run names; context and hidden widths appear in run config.

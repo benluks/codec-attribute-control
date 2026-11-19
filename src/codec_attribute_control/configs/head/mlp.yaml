@@ -1,4 +1,5 @@
-_target_: codec_attribute_control.head.LinearF0Head
+_target_: codec_attribute_control.head.MLPF0Head
 input_dim: 256
-hidden_sizes: [128]
+hidden_sizes: []
 activation: gelu
+context_size: 1
