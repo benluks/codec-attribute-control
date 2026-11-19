@@ -52,3 +52,11 @@ uv run --extra train --extra facodec train-probe data_root=/path/to/collections 
 ```
 
 `hidden_sizes=[]` retains the original linear probe. Supported activations: `gelu`, `relu`, `tanh`, `silu`. Compare nonlinear and linear results on the same split: an MLP probes nonlinear accessibility, not invertibility or demonstrated waveform control.
+
+## Absolute log-pitch supervision
+
+By default, the probe predicts within-recording z-scored log₂ F0 (`target_mode=normalized_log2`). For absolute pitch, use `target_mode=log2`: the target is `log2(F0 in Hz)` on voiced frames (>5 Hz), without recording-wise normalization. Unvoiced frames are excluded from both losses. A 1.0 log₂ difference is an octave; 1/12 is a semitone. Validation plots convert predictions back to Hz using `2**prediction` in this mode, rather than reference-derived normalization statistics. Metrics are named `log2_f0_*` in absolute mode, and `normalized_log2_f0_*` otherwise; their scales are not directly comparable. The run name and checkpoint monitor follow the selected mode.
+
+```bash
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections target_mode=log2 'system.head.hidden_sizes=[128]' system.head.activation=gelu batch_size=128
+```

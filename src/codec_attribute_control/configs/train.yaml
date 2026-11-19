@@ -11,8 +11,9 @@ num_workers: 24
 max_epochs: 10
 learning_rate: 0.0003
 weight_decay: 0.01
+target_mode: normalized_log2  # normalized_log2 or log2 (absolute log2 Hz)
 
-experiment_name: facodec-f0-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-f0-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
 
@@ -35,6 +36,7 @@ trainer:
     _target_: codec_attribute_control.training.F0ProbeTrainingModule
     system: ${system}
     optimization: ${optimization}
+    target_mode: ${target_mode}
   train_dataloader_kwargs:
     batch_size: ${batch_size}
     shuffle: true
@@ -57,7 +59,7 @@ trainer:
       - _target_: lightning.pytorch.callbacks.LearningRateMonitor
         logging_interval: step
       - _target_: lightning.pytorch.callbacks.ModelCheckpoint
-        monitor: val/normalized_log2_f0_mae
+        monitor: val/${target_mode}_f0_mae
         mode: min
         save_last: false
         save_top_k: 1
