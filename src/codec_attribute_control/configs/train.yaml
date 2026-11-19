@@ -24,6 +24,8 @@ system:
   head:
     _target_: codec_attribute_control.head.LinearF0Head
     input_dim: 256
+    hidden_sizes: []
+    activation: gelu
   freeze_encoder: true
   online_encoders: ${f0.online_encoders}
 
