@@ -2,6 +2,7 @@ defaults:
   - dataset: librispeech
   - f0: online
   - optimization: adamw_cosine
+  - head: linear
   - _self_
 
 data_root: ???
@@ -13,7 +14,7 @@ learning_rate: 0.0003
 weight_decay: 0.01
 target_mode: normalized_log2  # normalized_log2 or log2 (absolute log2 Hz)
 
-experiment_name: facodec-f0-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-f0-${hydra:runtime.choices.head}-${target_mode}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 train_split: train-clean-100
 val_split: dev-clean
 
@@ -22,11 +23,7 @@ system:
   encoder:
     _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
     batched: true
-  head:
-    _target_: codec_attribute_control.head.LinearF0Head
-    input_dim: 256
-    hidden_sizes: []
-    activation: gelu
+  head: ${head}
   freeze_encoder: true
   online_encoders: ${f0.online_encoders}
 
