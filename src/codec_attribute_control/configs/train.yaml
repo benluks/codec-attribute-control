@@ -13,6 +13,7 @@ codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
 batch_size: 8
 num_workers: 24
 max_epochs: 10
+log_every_n_steps: 50
 learning_rate: 0.0003
 weight_decay: 0.01
 target_mode: normalized_log2  # normalized_log2 or log2 (absolute log2 Hz)
@@ -44,7 +45,7 @@ trainer:
     num_workers: ${num_workers}
   trainer_kwargs:
     max_epochs: ${max_epochs}
-    log_every_n_steps: 1
+    log_every_n_steps: ${log_every_n_steps}
     accelerator: auto
     devices: 1
     logger:
