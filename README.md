@@ -60,3 +60,20 @@ By default, the probe predicts within-recording z-scored log₂ F0 (`target_mode
 ```bash
 uv run --extra train --extra facodec train-probe data_root=/cfs/collections target_mode=log2 'system.head.hidden_sizes=[128]' system.head.activation=gelu batch_size=128
 ```
+
+## Interchangeable F0 heads
+
+Choose the probe architecture with the Hydra `head` config group. The same FACodec prosody features, target modes, voiced-frame MSE, QC training pipeline, and evaluation apply to every head:
+
+```bash
+# Framewise linear (default)
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=linear
+
+# Framewise MLP (128 hidden units, GELU)
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=mlp batch_size=128
+
+# Original FACodec temporal CNN architecture (randomly initialized)
+uv run --extra train --extra facodec train-probe data_root=/cfs/collections head=facodec_cnn batch_size=128
+```
+
+Each architecture has its own `src/codec_attribute_control/configs/head/*.yaml`. Override MLP width with `'head.hidden_sizes=[128,64]'` and activation with `head.activation=tanh`. The `facodec_cnn` head uses Amphion's original `CNNLSTM` implementation (three residual convolutional blocks, SnakeBeta and two output projections); **despite its name, it has no recurrent LSTM**. Only its F0 output is supervised, and weights are newly initialized rather than copied from the pretrained FACodec decoder. The architecture name is included in W&B run names. The frozen FACodec encoder, targets, and loss are unchanged.

@@ -1,0 +1,4 @@
+# Exact upstream FACodec CNNLSTM architecture (three residual CNN blocks;
+# despite the name, no recurrent LSTM). Random initialization; F0 output only.
+_target_: codec_attribute_control.head.FACodecCNNF0Head
+input_dim: 256
