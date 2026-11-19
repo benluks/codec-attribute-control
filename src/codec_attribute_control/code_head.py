@@ -1,4 +1,5 @@
 """Pitch-to-discrete-prosody-code classifier."""
+import itertools
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -14,7 +15,7 @@ class PitchCodeHead(nn.Module):
         self.context_size = context_size
         dims = [2 * context_size, *hidden_sizes, codebook_size]
         layers = []
-        for a, b in zip(dims[:-2], dims[1:-1]):
+        for a, b in itertools.pairwise(dims[:-1]):
             layers.extend([nn.Linear(a, b), nn.GELU()])
         layers.append(nn.Linear(dims[-2], dims[-1]))
         self.network = nn.Sequential(*layers)
