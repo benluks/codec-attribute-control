@@ -45,3 +45,28 @@ def test_training_step_online_and_cached():
         loss.backward()
         assert system.head.projection.weight.grad is not None
         assert encoder.layer.weight.grad is None
+
+
+def test_contours_log_with_lightning_step_metric(monkeypatch):
+    from unittest.mock import Mock
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import wandb
+    from lightning.pytorch.loggers import WandbLogger
+
+    logger = WandbLogger(project="test-contour-logging")
+    experiment = Mock()
+    monkeypatch.setattr(logger, "_experiment", experiment)
+    module = F0ProbeTrainingModule(system=nn.Identity(), optimization=None)
+    module._trainer = SimpleNamespace(logger=logger, global_step=3568)
+    f0_hz = torch.tensor([[100.0, 110.0, 120.0, 130.0]])
+    module._log_validation_curves(f0_hz, torch.zeros_like(f0_hz), torch.tensor([4]))
+
+    experiment.log.assert_called_once()
+    args, kwargs = experiment.log.call_args
+    assert kwargs == {}
+    assert args[0]["trainer/global_step"] == 3568
+    (image,) = args[0]["val/f0_curves_hz"]
+    assert isinstance(image, wandb.Image)
