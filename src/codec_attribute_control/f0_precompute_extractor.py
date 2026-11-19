@@ -9,13 +9,13 @@ import torch
 from quick_convert.pipelines.precompute_features import PrecomputeFeaturesPipeline
 from torch import nn
 
-from .extractors import WORLDF0Extractor
+from .extractors import WORLDF0Extractor, PraatF0Extractor
 from .f0 import aligned_pitch
 from .f0_resource import OnlineF0
 from .facodec import HOP, SAMPLE_RATE
 
 
-def _world_contour(waveform):
+def _cpu_pitch_contour(task):\n    waveform, backend = task\n    extractor = WORLDF0Extractor() if backend == "world" else PraatF0Extractor()\n    frames = (len(waveform) + HOP - 1) // HOP\n    return aligned_pitch(extractor, torch.from_numpy(waveform), SAMPLE_RATE, frames)\n\n\ndef _world_contour(waveform):
     frames = (len(waveform) + HOP - 1) // HOP
     return aligned_pitch(
         WORLDF0Extractor(), torch.from_numpy(waveform), SAMPLE_RATE, frames
