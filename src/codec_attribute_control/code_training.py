@@ -9,7 +9,7 @@ class PitchCodeTrainingModule(BaseTrainingModule):
         super().__init__(optimization=optimization, enable_grad_norm_logging=True)
         self.system = system
 
-    def _step(self, batch, stage):
+    def _shared_step(self, batch, stage):
         codes, lengths = self.system(batch)
         resource = self.system.get_resource(batch, "f0")
         f0 = resource.values
@@ -38,7 +38,7 @@ class PitchCodeTrainingModule(BaseTrainingModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        return self._step(batch, "train")
+        return self._shared_step(batch, "train")
 
     def validation_step(self, batch, batch_idx):
-        return self._step(batch, "val")
+        return self._shared_step(batch, "val")
