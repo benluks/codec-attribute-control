@@ -1,6 +1,7 @@
 defaults:
   - dataset: librispeech
   - f0: online
+  - codes: online
   - optimization: adamw_cosine
   - _self_
 
@@ -17,9 +18,8 @@ experiment_name: facodec-pitch-to-code-ctx${system.head.context_size}-${hydra:ru
 
 system:
   _target_: codec_attribute_control.code_system.PitchToProsodyCodeSystem
-  encoder:
-    _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
-    batched: true
+  encoder: ${codes.encoder}
+  code_source: ${codes.source}
   head:
     _target_: codec_attribute_control.code_head.PitchCodeHead
     codebook_size: 1024

@@ -1,0 +1,7 @@
+# Frozen FACodec encoder supplies code labels during each training batch.
+source: online
+dataset_load: []
+resource_providers: []
+encoder:
+  _target_: codec_attribute_control.facodec_encoder.FACodecContentEncoder
+  batched: true

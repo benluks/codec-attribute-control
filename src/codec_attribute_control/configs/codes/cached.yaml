@@ -1,0 +1,9 @@
+# Load tiny integer code tensors through QC's standard tensor resource provider.
+source: cached
+dataset_load: [prosody_codes]
+resource_providers:
+  - _target_: quick_convert.data.resources.PathResourceProvider
+    name: prosody_codes
+    kind: torch_tensor
+    path_template: ${codes_cache_root}/{sample.split}/{sample.utt_id}.pt
+encoder: null

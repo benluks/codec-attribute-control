@@ -19,8 +19,10 @@ ConfigStore.instance().store(
 
 def run_training(cfg):
     providers = instantiate(cfg.f0.resource_providers)
+    if 'codes' in cfg:
+        providers = [*providers, *instantiate(cfg.codes.resource_providers)]
     def dataset(split):
-        return instantiate(cfg.dataset, splits=[split], load=cfg.f0.dataset_load,
+        return instantiate(cfg.dataset, splits=[split], load=list(dict.fromkeys([*cfg.f0.dataset_load, *(cfg.codes.dataset_load if 'codes' in cfg else [])])),
                            resource_providers=providers, target_sr=16000)
 
     train_dataset = dataset(cfg.train_split)

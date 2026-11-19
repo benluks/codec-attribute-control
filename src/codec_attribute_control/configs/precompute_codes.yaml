@@ -1,0 +1,34 @@
+defaults:
+  - dataset: librispeech
+  - _self_
+
+data_root: ???
+codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
+splits: [train-clean-100, dev-clean]
+batch_size: 8
+num_workers: 4
+device: cuda
+cache_key: null
+
+dataset:
+  splits: ${splits}
+  load: [audio]
+  target_sr: 16000
+
+pipeline:
+  _target_: quick_convert.pipelines.precompute_features.PrecomputeFeaturesPipeline
+  dataset: ${dataset}
+  extractor:
+    _target_: codec_attribute_control.code_precompute_extractor.ProsodyCodePrecomputeExtractor
+    device: ${device}
+  out_dir: ${codes_cache_root}
+  batch_size: ${batch_size}
+  num_workers: ${num_workers}
+  skip_existing: true
+  cache_key: ${cache_key}
+
+hydra:
+  run:
+    dir: outputs
+  job:
+    chdir: false

@@ -27,6 +27,7 @@ facodec = ["einops>=0.7", "huggingface-hub>=0.20", "safetensors>=0.4", "pyworld>
 [project.scripts]
 train-probe = "codec_attribute_control.train:main"
 train-pitch-codes = "codec_attribute_control.train_codes:main"
+precompute-codes = "codec_attribute_control.precompute_codes:main"
 precompute-f0 = "codec_attribute_control.precompute_f0:main"
 
 [dependency-groups]

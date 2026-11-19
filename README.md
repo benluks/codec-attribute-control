@@ -91,3 +91,14 @@ uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collection
 ```
 
 Config: `configs/train_codes.yaml`. Existing QC datasets, F0 resources, optimization, W&B, and checkpointing are reused. Code indices are taken from the first of six FACodec quantizers; the other five remain untouched. The next experiment is to replace the original prosody codes with predicted ones and measure decoded waveform F0, retaining the original content/residual/speaker streams. High code accuracy alone does not establish controllability.
+
+### Cache prosody code indices
+
+The single prosody quantizer produces one integer index (0–1023) per 80 Hz frame. Cache only this index as a `uint16` tensor (2 bytes/frame; approximately 576 KB/hour before file overhead), using QC's existing precompute pipeline and manifest/skip-existing behavior:
+
+```bash
+uv run --extra facodec precompute-codes data_root=/cfs/collections
+uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collections codes=cached
+```
+
+Both commands default to `./outputs/precomputed/prosody_codes/facodec`; override `codes_cache_root` in either config. The cached training path does **not** instantiate FACodec. JDC F0 can independently be online (`f0=online`) or precomputed (`f0=cached`). For the lightest training, precompute both and run `train-pitch-codes codes=cached f0=cached`. Note that the dataset may still load audio by default; the code labels themselves are tiny.
