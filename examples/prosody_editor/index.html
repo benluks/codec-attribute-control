@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prosody conversion editor</title><style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#10141c;color:#e9eef8}body{margin:0;padding:26px;max-width:1100px;margin:auto}h1{font-size:24px;margin:0 0 5px}.sub{color:#a9b4c5;margin:0 0 24px}section{background:#1a2130;border:1px solid #344052;border-radius:14px;padding:18px;margin:14px 0}button,select,input::file-selector-button{background:#283449;color:#eaf1fb;border:1px solid #4b5a72;border-radius:8px;padding:9px 13px;cursor:pointer}button:hover{background:#354764}button:disabled{opacity:.4;cursor:not-allowed}input[type=file]{max-width:100%}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{font-size:13px;color:#b7c2d2}canvas{width:100%;display:block;touch-action:none}#pitch{height:340px;cursor:grab}#pitch:active{cursor:grabbing}#wave{height:85px}.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:#c5d0df;margin-bottom:12px}.key{display:inline-block;width:17px;height:3px;vertical-align:middle;margin-right:7px}.muted{color:#a9b4c5;font-size:13px}.status{padding:10px;background:#121b29;border-radius:8px;margin-top:12px;font-size:13px}.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}input[type=range]{width:160px}.pill{font-size:12px;background:#26344a;border-radius:20px;padding:5px 10px}.foot{font-size:12px;color:#94a1b3;margin-top:15px}#error{font-variant-numeric:tabular-nums}
+</style></head><body><h1>Prosody conversion editor</h1><p class="sub">Edit a target F0 contour, then compare it with the pitch actually realized by a conversion model.</p>
+<section><div class="toolbar"><label>Load utterance <input id="file" type="file" accept="audio/*"></label><button id="demo">Load synthetic example</button><span class="pill" id="filename">No audio loaded</span></div><canvas id="wave"></canvas><div class="toolbar"><button id="playOriginal" disabled>▶ Original</button><button id="playConverted" disabled>▶ Converted</button><button id="stop">■ Stop</button><span class="muted" id="duration"></span></div></section>
+<section><div class="legend"><span><i class="key" style="background:#717987"></i>Original F0</span><span><i class="key" style="background:#5d9dff"></i>Target F0 · draggable</span><span><i class="key" style="background:#f5ad5a"></i>Realized F0</span></div><canvas id="pitch"></canvas><div class="controls"><button id="reset">Reset target</button><button id="zoomOut">− Zoom</button><button id="zoomIn">+ Zoom</button><button id="zoomReset">Fit</button><span id="zoomLabel" class="muted">100%</span><button id="up">+2 semitones</button><button id="down">−2 semitones</button><label class="muted">Brush width <input type="range" id="brush" min="15" max="400" value="70" step="5"></label><span id="brushValue" class="muted">70 ms</span><label class="muted">Smoothness <input type="range" id="smooth" min="0" max="100" value="30"></label><span id="smoothValue" class="muted">30%</span></div><p class="muted">Pinch on your Mac trackpad to zoom horizontally around the cursor; two-finger scroll pans when zoomed. Grab the blue line anywhere and drag freely. Dragging deforms the contour in both time and pitch, with adjustable influence width and smoothness. Gray is the unchanged original; gaps remain unvoiced. Double-click to restore a small local region.</p></section>
+<section><div class="toolbar"><label>Conversion backend <select id="backend"><option value="none">Not connected (UI preview)</option></select></label><button id="convert" disabled>Convert utterance</button><label class="muted">Load converted audio <input id="convertedFile" type="file" accept="audio/*"></label></div><div class="status" id="status">Load an utterance to begin. This standalone HTML supports F0 analysis and target editing. A model backend must be connected for synthesis.</div><p class="muted" id="error"></p></section>
+<p class="foot">Runs locally in your browser. Audio is not uploaded anywhere. Pitch extraction uses a lightweight browser autocorrelation estimator (80 Hz frame rate); for research-grade comparison, use the same validated F0 extractor on original and converted speech in the backend.</p>
+<script>
+(()=>{'use strict';const $=id=>document.getElementById(id);const p=$('pitch'),w=$('wave');let ctx=new (window.AudioContext||window.webkitAudioContext)(),original=null,converted=null,origF=[],realF=[],source=null,demo=false;const blue='#5d9dff',gray='#9ca9bd',orange='#f5ad5a';
+function size(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return {g:x,W:r.width,H:r.height}}
+function f0(buf){const sr=buf.sampleRate,mono=buf.getChannelData(0),hop=Math.max(1,Math.round(sr/80)),win=Math.round(sr*.045),out=[];let maxAmp=0;for(let i=0;i<mono.length;i+=100)maxAmp=Math.max(maxAmp,Math.abs(mono[i]));for(let center=0;center<mono.length;center+=hop){let start=Math.max(0,Math.min(mono.length-win,center-Math.floor(win/2))),n=Math.min(win,mono.length-start);if(n<256)break;let rms=0;for(let j=0;j<n;j+=2)rms+=mono[start+j]**2;rms=Math.sqrt(rms/(n/2));let pitch=null;if(rms>Math.max(.006,maxAmp*.035)){let best=-Infinity,lag=0,min=Math.floor(sr/450),max=Math.min(Math.floor(sr/70),Math.floor(n/2));for(let l=min;l<=max;l+=1){let dot=0,a=0,b=0;for(let j=0;j<n-l;j+=3){let x=mono[start+j],y=mono[start+j+l];dot+=x*y;a+=x*x;b+=y*y}let score=dot/Math.sqrt(a*b+1e-12);if(score>best){best=score;lag=l}}if(best>.78)pitch=sr/lag}out.push({t:center/sr,hz:pitch})}return out}
+function sample(arr,t){if(!arr.length)return null;let step=arr.length>1?arr[1].t-arr[0].t:.02,i=Math.min(arr.length-1,Math.max(0,Math.round(t/step)));return arr[i].hz}
+function baseAt(t){return sample(origF,t)}
+// Every extracted frame is editable; there are no sparse anchors. Store pitch offsets
+// in semitones to make a fixed vertical gesture perceptually comparable across F0.
+let offsets=[],stroke=null,hoverT=null,viewStart=0,viewSpan=4;
+function targetAt(t){let b=baseAt(t);if(b==null)return null;let i=Math.max(0,Math.min(offsets.length-1,Math.round(t/(origF[1]?.t-origF[0]?.t||.0125))));return b*Math.pow(2,(offsets[i]||0)/12)}
+function reset(){if(!original)return;offsets=new Array(origF.length).fill(0);stroke=null;draw()}
+function plotCurve(g,frames,col,width,fn,x,y,alpha=1){g.save();g.globalAlpha=alpha;g.strokeStyle=col;g.lineWidth=width;g.lineJoin='round';g.lineCap='round';g.beginPath();let active=false,lastT=-1;for(let i=0;i<frames.length;i++){let t=frames[i].t,hz=fn?fn(t,i):frames[i].hz;if(hz==null){active=false;continue}if(lastT>=0&&t-lastT>.04)active=false;if(!active)g.moveTo(x(t),y(hz));else g.lineTo(x(t),y(hz));active=true;lastT=t}g.stroke();g.restore()}
+function draw(){let {g,W,H}=size(p),L=48,R=18,T=20,B=30,dur=original?.duration||4,x=t=>L+((t-viewStart)/viewSpan)*(W-L-R),y=hz=>H-B-(Math.log2(Math.max(60,hz)/60)/Math.log2(500/60))*(H-T-B);g.clearRect(0,0,W,H);g.font='12px system-ui';g.textAlign='right';for(let hz of [75,100,150,200,300,400]){let yy=y(hz);g.strokeStyle='#344052';g.lineWidth=1;g.beginPath();g.moveTo(L,yy);g.lineTo(W-R,yy);g.stroke();g.fillStyle='#9daabc';g.fillText(hz+'',L-8,yy+4)}g.textAlign='center';for(let i=0;i<=4;i++){let t=viewStart+viewSpan*i/4,xx=x(t);g.fillStyle='#9daabc';g.fillText(t.toFixed(1)+'s',xx,H-7)}
+g.save();g.beginPath();g.rect(L,T,W-L-R,H-T-B);g.clip();plotCurve(g,origF,'#b8c0cb',2,null,x,y,.28);
+plotCurve(g,origF,blue,2.6,targetAt,x,y);
+plotCurve(g,realF,orange,2.5,null,x,y,.94);g.restore();
+if(original&&hoverT!=null){let hz=targetAt(hoverT);if(hz!=null){let xx=x(hoverT),yy=y(hz);g.strokeStyle='rgba(93,157,255,.25)';g.beginPath();g.arc(xx,yy,Math.max(10,(Number($('brush').value)/1000/viewSpan)*(W-L-R)/2),0,Math.PI*2);g.stroke();g.beginPath();g.arc(xx,yy,3,0,2*Math.PI);g.fillStyle=blue;g.fill()}}}
+function wave(){let {g,W,H}=size(w);g.clearRect(0,0,W,H);g.fillStyle='#131b28';g.fillRect(0,0,W,H);if(!original)return;let data=original.getChannelData(0),mid=H/2;g.strokeStyle='#85a9dc';g.lineWidth=1;for(let px=0;px<W;px++){let a=Math.floor(px/W*data.length),b=Math.max(a+1,Math.floor((px+1)/W*data.length)),min=1,max=-1;for(let j=a;j<b;j+=Math.max(1,Math.floor((b-a)/30))){let v=data[j];min=Math.min(min,v);max=Math.max(max,v)}g.beginPath();g.moveTo(px,mid-max*mid*.88);g.lineTo(px,mid-min*mid*.88);g.stroke()}}
+function setOriginal(b,name){viewStart=0;viewSpan=b.duration;updateZoomLabel();original=b;converted=null;realF=[];origF=f0(b);$('filename').textContent=name;$('duration').textContent=b.duration.toFixed(2)+' s';$('playOriginal').disabled=false;$('playConverted').disabled=true;$('convert').disabled=true;reset();wave();$('status').textContent='Original F0 estimated. Edit the blue curve, then connect a converter or load a converted file to compare.'}
+function play(b){if(!b)return;stop();ctx.resume();source=ctx.createBufferSource();source.buffer=b;source.connect(ctx.destination);source.onended=()=>{source=null};source.start()};function stop(){if(source){try{source.stop()}catch{}source=null}}
+$('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{setOriginal(await ctx.decodeAudioData(await f.arrayBuffer()),f.name)}catch(err){$('status').textContent='Could not decode audio: '+err.message}};
+$('convertedFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{converted=await ctx.decodeAudioData(await f.arrayBuffer());realF=f0(converted);$('playConverted').disabled=false;draw();let err=[],dur=Math.min(original?.duration||0,converted.duration);for(let t=0;t<dur;t+=.02){let r=sample(realF,t),v=targetAt(t);if(r!=null&&v!=null)err.push(Math.abs(12*Math.log2(r/v)))}$('error').textContent=err.length?'Mean absolute pitch error (voiced, time-aligned assumption): '+(err.reduce((a,b)=>a+b,0)/err.length).toFixed(2)+' semitones':'No overlapping voiced F0 frames found.';$('status').textContent='Converted audio loaded; orange contour is measured from that file. Check timing alignment before interpreting the error.'}catch(err){$('status').textContent='Could not decode converted audio: '+err.message}};
+$('playOriginal').onclick=()=>play(original);$('playConverted').onclick=()=>play(converted);$('stop').onclick=stop;$('reset').onclick=reset;$('up').onclick=()=>{offsets=offsets.map(v=>v+2);draw()};$('down').onclick=()=>{offsets=offsets.map(v=>v-2);draw()};$('brush').oninput=()=>{$('brushValue').textContent=$('brush').value+' ms';draw()};$('smooth').oninput=()=>{$('smoothValue').textContent=$('smooth').value+'%';draw()};
+
+function updateZoomLabel(){let d=original?.duration||viewSpan;$('zoomLabel').textContent=Math.round(d/viewSpan*100)+'%'}
+function zoom(factor,anchor=.5){
+ if(!original)return;
+ const dur=original.duration,old=viewSpan,next=Math.max(.15,Math.min(dur,old*factor));
+ const pivot=viewStart+old*anchor;
+ viewSpan=next;viewStart=Math.max(0,Math.min(dur-next,pivot-next*anchor));
+ updateZoomLabel();draw();
+}
+$('zoomIn').onclick=()=>zoom(.75);
+$('zoomOut').onclick=()=>zoom(1/.75);
+$('zoomReset').onclick=()=>{if(!original)return;viewStart=0;viewSpan=original.duration;updateZoomLabel();draw()};
+p.addEventListener('wheel',e=>{
+ if(!original)return;
+ e.preventDefault();
+ if(e.ctrlKey){ // macOS trackpad pinch is delivered as ctrl + wheel in Chromium/WebKit
+   const r=p.getBoundingClientRect(),anchor=Math.max(0,Math.min(1,(e.clientX-r.left-48)/(r.width-66)));
+   zoom(Math.exp(e.deltaY*.012),anchor);
+ }else if(viewSpan<original.duration){
+   const shift=e.shiftKey?e.deltaY:e.deltaX||e.deltaY;
+   viewStart=Math.max(0,Math.min(original.duration-viewSpan,viewStart+shift/Math.max(100,p.clientWidth-66)*viewSpan));
+   draw();
+ }
+},{passive:false});
+function pos(e){let r=p.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,W:r.width,H:r.height}}
+function timeAt(q){return Math.max(0,Math.min(original.duration,viewStart+(q.x-48)/(q.W-66)*viewSpan))}
+function hzAt(q){return Math.max(60,Math.min(500,60*Math.pow(500/60,(q.H-30-q.y)/(q.H-50))))}
+function edit(e,restore=false){if(!original)return;let q=pos(e),t=timeAt(q),hz=hzAt(q),cur=targetAt(t);if(cur==null)return;
+ let aim=restore?0:12*Math.log2(hz/baseAt(t));if(!Number.isFinite(aim))return;
+ let width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100;
+ // Raised-cosine / Gaussian spatial falloff around pointer; smoothly tapered edges.
+ // Drag strokes operate on a per-stroke snapshot, preventing cumulative overshoot.
+ let sigma=Math.max(.006,width*(.10+.22*sm));
+ let at=Math.max(0,Math.min(offsets.length-1,Math.round(t/(origF[1]?.t-origF[0]?.t||.0125))));
+ let snapshot=stroke?.snapshot||offsets.slice();
+ let value=restore?0:aim;
+ for(let i=0;i<origF.length;i++){
+  if(origF[i].hz==null)continue;
+  const dist=Math.abs(origF[i].t-t);if(dist>width)continue;
+  let weight=Math.exp(-.5*Math.pow(dist/sigma,2));
+  // Very low smoothness gives localized fine editing; high smoothness broadens the influence.
+  offsets[i]=snapshot[i]+(value-snapshot[at])*weight;
+ }
+ draw();}
+// A drag is a deformation of a frozen contour, not a sequence of brush stamps.
+// Sample the snapshot through an inverse, monotonic local time warp.
+function snapshotPitch(snapshot,t){
+ const step=origF[1]?.t-origF[0]?.t||.0125,idx=t/step;
+ const lo=Math.floor(idx),hi=Math.ceil(idx);
+ if(lo<0||hi>=origF.length||origF[lo].hz==null||origF[hi].hz==null)return null;
+ const alpha=idx-lo;
+ const p0=Math.log2(origF[lo].hz)+snapshot[lo]/12;
+ const p1=Math.log2(origF[hi].hz)+snapshot[hi]/12;
+ return (1-alpha)*p0+alpha*p1;
+}
+function deform(start,dx,dy){
+ const width=Number($('brush').value)/1000;
+ const smooth=Number($('smooth').value)/100;
+ // Broad enough to move a feature in time, but local to the grabbed region.
+ const sigma=Math.max(.012,width*(.45+.45*smooth),Math.abs(dx)*2.5);
+ // Gaussian time displacement has derivative bounded by |dx|/(sigma*sqrt(e)).
+ // sigma >= 2.5*|dx| keeps the mapping monotonic.
+ const shift=t=>dx*Math.exp(-.5*((t-start.t)/sigma)**2);
+ const pitchShift=t=>dy*Math.exp(-.5*((t-start.t)/sigma)**2);
+ for(let i=0;i<origF.length;i++){
+  if(origF[i].hz==null)continue;
+  const t=origF[i].t;
+  // Invert t = source + shift(source) using fixed-point iterations.
+  let source=t;
+  for(let k=0;k<12;k++)source=t-shift(source);
+  const logPitch=snapshotPitch(start.snapshot,source);
+  if(logPitch==null){
+   offsets[i]=start.snapshot[i];
+   continue;
+  }
+  const desired=logPitch+pitchShift(source)/12;
+  offsets[i]=12*(desired-Math.log2(origF[i].hz));
+ }
+}
+p.onpointerdown=e=>{
+ if(!original||e.button!==0)return;
+ const q=pos(e),t=timeAt(q),v=targetAt(t),hz=hzAt(q);
+ if(v==null)return;
+ const pxPerOctave=(q.H-50)/Math.log2(500/60);
+ if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22)return;
+ stroke={t,q,snapshot:offsets.slice()};
+ hoverT=t;p.setPointerCapture(e.pointerId);draw();
+};
+p.onpointermove=e=>{
+ if(!original)return;
+ const q=pos(e),t=timeAt(q);hoverT=t;
+ if(stroke){
+  const dx=t-stroke.t;
+  const dy=12*Math.log2(hzAt(q)/hzAt(stroke.q));
+  if(Number.isFinite(dy))deform(stroke,dx,dy);
+ }
+ draw();
+};
+p.onpointerup=p.onpointercancel=()=>{stroke=null;draw()};p.onpointerleave=()=>{if(!stroke){hoverT=null;draw()}};
+p.ondblclick=e=>{if(!original)return;let q=pos(e),t=timeAt(q),width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100,sigma=Math.max(.006,width*(.10+.22*sm));for(let i=0;i<origF.length;i++){let d=Math.abs(origF[i].t-t);let weight=Math.exp(-.5*(d/sigma)**2);offsets[i]*=(1-weight)}draw()};
+$('demo').onclick=()=>{let sr=16000,dur=4,b=ctx.createBuffer(1,sr*dur,sr),a=b.getChannelData(0);for(let i=0;i<a.length;i++){let t=i/sr,voiced=!(t>.85&&t<1.1)&&!(t>2.2&&t<2.5)&&!(t>3.45&&t<3.7),f=155+21*Math.sin(t*2.6)+12*Math.sin(t*6);a[i]=voiced?.16*Math.sin(2*Math.PI*(155*t+21/(2*Math.PI*2.6)*(1-Math.cos(t*2.6))+12/(2*Math.PI*6)*(1-Math.cos(t*6)))):0}setOriginal(b,'synthetic-example.wav');$('status').textContent='Synthetic voiced-tone example loaded. The converter is not connected.'};window.addEventListener('resize',()=>{draw();wave()});draw();wave();
+})();
+</script></body></html>
