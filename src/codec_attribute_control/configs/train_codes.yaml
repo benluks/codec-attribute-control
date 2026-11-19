@@ -1,0 +1,67 @@
+defaults:
+  - dataset: librispeech
+  - f0: online
+  - codes: online
+  - optimization: adamw_cosine
+  - _self_
+
+data_root: ???
+f0_cache_root: ./outputs/precomputed/f0/jdc
+batch_size: 128
+num_workers: 24
+max_epochs: 10
+learning_rate: 0.0003
+weight_decay: 0.01
+train_split: train-clean-100
+val_split: dev-clean
+experiment_name: facodec-pitch-to-code-ctx${system.head.context_size}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+
+system:
+  _target_: codec_attribute_control.code_system.PitchToProsodyCodeSystem
+  encoder: ${codes.encoder}
+  code_source: ${codes.source}
+  head:
+    _target_: codec_attribute_control.code_head.PitchCodeHead
+    codebook_size: 1024
+    hidden_sizes: [128]
+    context_size: 5
+  online_encoders: ${f0.online_encoders}
+
+trainer:
+  _target_: quick_convert.training.lightning.trainer.LightningTrainer
+  module:
+    _target_: codec_attribute_control.code_training.PitchCodeTrainingModule
+    system: ${system}
+    optimization: ${optimization}
+  train_dataloader_kwargs:
+    batch_size: ${batch_size}
+    shuffle: true
+    num_workers: ${num_workers}
+  val_dataloader_kwargs:
+    batch_size: ${batch_size}
+    num_workers: ${num_workers}
+  trainer_kwargs:
+    max_epochs: ${max_epochs}
+    log_every_n_steps: 1
+    accelerator: auto
+    devices: 1
+    logger:
+      _target_: lightning.pytorch.loggers.WandbLogger
+      _partial_: true
+      project: codec-attribute-control
+      name: ${experiment_name}
+      save_dir: ${hydra:runtime.output_dir}
+    callbacks:
+      - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+        logging_interval: step
+      - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+        monitor: val/code_accuracy
+        mode: max
+        save_top_k: 1
+        filename: best
+
+hydra:
+  run:
+    dir: outputs
+  job:
+    chdir: false
