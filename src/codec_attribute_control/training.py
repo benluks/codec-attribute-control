@@ -9,17 +9,37 @@ from .plotting import make_f0_figure
 from .supervision import prepare_f0_targets
 
 
+def align_f0_to_feature_grid(f0_hz, f0_lengths, feature_lengths, n_frames, *, source_hz=80, target_hz=50):
+    """Nearest-neighbor resample F0 labels onto SSL feature timestamps.
+
+    Invalid/padded frames stay NaN; source timestamps are measured from the
+    start of the utterance. No interpolation across unvoiced regions.
+    """
+    if f0_hz.ndim != 2 or f0_lengths.ndim != 1 or feature_lengths.ndim != 1:
+        raise ValueError("Expected F0 [B,T] and frame lengths [B]")
+    if source_hz <= 0 or target_hz <= 0:
+        raise ValueError("Frame rates must be positive")
+    t = torch.arange(n_frames, device=f0_hz.device)
+    index = torch.floor(t.float() * source_hz / target_hz + 0.5).long()
+    index = torch.minimum(index[None, :], (f0_lengths[:, None] - 1).clamp_min(0))
+    values = f0_hz.gather(1, index)
+    valid = t[None, :] < feature_lengths[:, None]
+    return values.masked_fill(~valid, float('nan')), feature_lengths
+
+
+
 @dataclass
 class ProbeStepOutput:
     loss: torch.Tensor
 
 
 class F0ProbeTrainingModule(BaseTrainingModule):
-    def __init__(self, system, optimization, target_mode="normalized_log2"):
+    def __init__(self, system, optimization, target_mode="normalized_log2", align_f0_to_features=False):
         super().__init__(optimization=optimization, enable_grad_norm_logging=True)
         if target_mode not in ("normalized_log2", "log2"):
             raise ValueError(f"Unsupported F0 target mode: {target_mode}")
         self.target_mode = target_mode
+        self.align_f0_to_features = align_f0_to_features
         self.system = system
         self.train_metrics = F0ProbeMetrics()
         self.val_metrics = F0ProbeMetrics()
@@ -35,7 +55,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
             raise ValueError("Aligned F0 must match prediction shape [B,T]")
         if resource.lengths is None:
             raise ValueError("F0 resource must provide valid lengths")
-        f0_lengths = resource.lengths.to(predictions.device)
+        f0_lengths = aligned_lengths.to(predictions.device)
         if not torch.equal(f0_lengths, feature_lengths.to(predictions.device)):
             raise ValueError("F0 and encoder valid frame lengths differ")
         targets, voiced = prepare_f0_targets(f0_hz.to(predictions.device), f0_lengths, target_mode=self.target_mode)
