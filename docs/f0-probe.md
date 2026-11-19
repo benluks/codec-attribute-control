@@ -42,6 +42,14 @@ For WORLD, `pitch_workers` sets the number of CPU processes extracting pitch.
 large as `pitch_workers` to keep the pool busy. Changing the worker count
 can resume the same cache.
 
+To distribute preprocessing across machines, run the same command on each
+host with `num_shards=N` and a different `shard_index` from `0` through `N-1`.
+All hosts must use the same dataset arguments, backend, shard count, and shared
+`f0_cache_root`. Use a fresh root for the sharded run. The cache tensors land in
+their usual split directories, and each shard writes its own manifest under
+`.shards/<shard_index>`. Training can use that root directly after all shards
+finish. Rerun a shard with the same index to resume its work.
+
 Select the backend with `f0_backend` for precomputation and both trainers:
 
 | Backend | Target recipe |
