@@ -14,7 +14,8 @@ def test_praat_uses_amphion_parameters_and_real_frame_timestamps(monkeypatch):
     calls = {}
 
     class FakePitch:
-        selected_array = {"frequency": np.array([100., 0., 200.])}
+        def __init__(self):
+            self.selected_array = {"frequency": np.array([100., 0., 200.])}
 
         def xs(self):
             return np.array([0.0125, 0.025, 0.0375])
