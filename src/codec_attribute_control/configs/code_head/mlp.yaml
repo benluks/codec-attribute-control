@@ -1,0 +1,4 @@
+_target_: codec_attribute_control.code_head.PitchCodeHead
+codebook_size: 1024
+hidden_sizes: [128]
+context_size: 5
