@@ -30,7 +30,7 @@ def test_global_requires_stats():
 
 @pytest.mark.parametrize("normalization", ["none", "utterance", "global"])
 def test_cnn_shape(normalization):
-    kwargs = dict(global_mean=7., global_std=2.) if normalization == "global" else {}
+    kwargs = {"global_mean": 7., "global_std": 2.} if normalization == "global" else {}
     head = GlobalContextPitchCodeHead(codebook_size=12, hidden_size=8, dilations=(1,))
     transformed = PitchInputTransform(normalization=normalization, **kwargs)(torch.tensor([[100., 200., 0.]]))
     logits = head(transformed, lengths=torch.tensor([3]))
