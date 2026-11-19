@@ -1,4 +1,5 @@
 """Validation pitch-contour visualization in absolute Hz."""
+
 import numpy as np
 
 from .targets import f0_target
@@ -24,18 +25,33 @@ def pitch_curves_hz(reference_hz, predicted_z, length, target_mode="normalized_l
     if target_mode == "log2":
         reconstructed[voiced] = np.exp2(predicted[voiced])
     else:
-        reconstructed[voiced] = np.exp2(predicted[voiced] * stats.std_log2_hz + stats.mean_log2_hz)
+        reconstructed[voiced] = np.exp2(
+            predicted[voiced] * stats.std_log2_hz + stats.mean_log2_hz
+        )
     return actual, reconstructed
 
 
-def make_f0_figure(reference_hz, predicted_z, lengths, max_items=8, target_mode="normalized_log2"):
+def make_f0_figure(
+    reference_hz,
+    predicted_z,
+    lengths,
+    max_items=8,
+    target_mode="normalized_log2",
+    *,
+    frame_hz=80,
+    frame_offset_seconds=0.0,
+):
     """One subplot per utterance; NaNs break lines at unvoiced frames."""
     import matplotlib.pyplot as plt
 
     curves = []
     for reference, predicted, length in zip(reference_hz, predicted_z, lengths):
         try:
-            curves.append(pitch_curves_hz(reference, predicted, int(length), target_mode=target_mode))
+            curves.append(
+                pitch_curves_hz(
+                    reference, predicted, int(length), target_mode=target_mode
+                )
+            )
         except ValueError:
             continue
         if len(curves) >= max_items:
@@ -43,11 +59,20 @@ def make_f0_figure(reference_hz, predicted_z, lengths, max_items=8, target_mode=
     if not curves:
         return None
 
-    fig, axes = plt.subplots(len(curves), 1, figsize=(12, 2.3 * len(curves)), squeeze=False)
+    fig, axes = plt.subplots(
+        len(curves), 1, figsize=(12, 2.3 * len(curves)), squeeze=False
+    )
     for index, ((actual, predicted), axis) in enumerate(zip(curves, axes[:, 0])):
-        time = np.arange(len(actual)) / 80.0
+        time = frame_offset_seconds + np.arange(len(actual)) / frame_hz
         axis.plot(time, actual, label="Reference F0", linewidth=1.4)
-        axis.plot(time, predicted, label="Predicted F0" if target_mode == "log2" else "Predicted F0 (reference-calibrated)", linewidth=1.2)
+        axis.plot(
+            time,
+            predicted,
+            label="Predicted F0"
+            if target_mode == "log2"
+            else "Predicted F0 (reference-calibrated)",
+            linewidth=1.2,
+        )
         axis.set_ylabel(f"#{index + 1} · Hz")
         axis.grid(alpha=0.2)
         if index == 0:

@@ -117,11 +117,10 @@ This experiment reuses Quick Convert's existing `W2VBertContentEncoder` and
 W2V-BERT + CosyVoice DiT SSL-reconstruction Lightning checkpoint, freezes the
 encoder and fusion, and trains only one of the existing F0 heads. W2V-BERT
 features are 50 Hz, so the existing 80 Hz WORLD F0 labels are sampled onto
-the 50 Hz feature timestamps (unvoiced frames remain excluded).
+the centers of the 50 Hz feature frames. Unvoiced frames remain excluded.
 
 ```bash
-uv sync --extra train
-uv run --extra train train-w2vbert-probe \
+uv run --extra train --extra w2vbert train-w2vbert-probe \
   data_root=/cfs/collections \
   reconstruction_checkpoint=/path/to/w2vbert_dit_cosyvoice_librispeech.ckpt \
   head=mlp 'head.hidden_sizes=[512]' head.context_size=3 \
@@ -129,9 +128,12 @@ uv run --extra train train-w2vbert-probe \
   target_mode=log2
 ```
 
-Other supported heads: `head=facodec_cnn` (temporal CNN) and
+Other supported heads: `head=facodec_cnn` (temporal CNN, requires `--extra facodec`
+and the Amphion submodule) and
 `head=contextual`. The default is absolute log₂ F0; the target normalization
 is not identical to the original SSL-probe experiment's global z-score, so
 compare correlation and R² only after matching metric definitions. The
 reconstruction checkpoint must contain `system.feature_transform.weights`.
-A checkpoint path is required; no W&B download happens automatically.
+Pass a trusted checkpoint path. When encoder weights are present, they are
+restored along with the fusion weights. `reconstruction_revision` selects the
+Hugging Face backbone and processor revision from the reconstruction config.

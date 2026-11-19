@@ -5,6 +5,7 @@ defaults:
   - _self_
 
 reconstruction_checkpoint: ???
+reconstruction_revision: da985ba0987f70aaeb84a80f2851cfac8c697a7b
 f0_backend: world
 target_mode: log2
 align_f0_to_features: true

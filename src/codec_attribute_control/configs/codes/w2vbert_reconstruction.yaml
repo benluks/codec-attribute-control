@@ -6,3 +6,4 @@ resource_providers: []
 encoder:
   _target_: codec_attribute_control.w2vbert_reconstruction.ReconstructionW2VBertEncoder
   checkpoint_path: ${reconstruction_checkpoint}
+  revision: ${reconstruction_revision}
