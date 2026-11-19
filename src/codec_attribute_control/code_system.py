@@ -5,7 +5,7 @@ from quick_convert.components.resources.resolution import OnlineResourceMixin
 
 
 class PitchToProsodyCodeSystem(OnlineResourceMixin, InferenceSystem):
-    def __init__(self, head, encoder=None, online_encoders=None, code_source="online"):
+    def __init__(self, head, encoder=None, online_encoders=None, code_source="online", pitch_transform=None):
         super().__init__()
         if code_source not in ("online", "cached"):
             raise ValueError(f"Unsupported code source: {code_source}")
@@ -13,6 +13,7 @@ class PitchToProsodyCodeSystem(OnlineResourceMixin, InferenceSystem):
             raise ValueError("Online code targets require a FACodec encoder")
         self.encoder = encoder.requires_grad_(False) if encoder is not None else None
         self.head = head
+        self.pitch_transform = pitch_transform
         self.code_source = code_source
         self.configure_online_encoders(online_encoders)
 

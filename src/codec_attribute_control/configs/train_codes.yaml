@@ -4,6 +4,7 @@ defaults:
   - codes: online
   - optimization: adamw_cosine
   - code_head: cnn
+  - pitch_transform: log2
   - _self_
 
 data_root: ???
@@ -17,13 +18,14 @@ learning_rate: 0.0003
 weight_decay: 0.01
 train_split: train-clean-100
 val_split: dev-clean
-experiment_name: facodec-pitch-to-code-${hydra:runtime.choices.code_head}-${f0_backend}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-pitch-to-code-${hydra:runtime.choices.code_head}-${pitch_transform.normalization}-${f0_backend}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 
 system:
   _target_: codec_attribute_control.code_system.PitchToProsodyCodeSystem
   encoder: ${codes.encoder}
   code_source: ${codes.source}
   head: ${code_head}
+  pitch_transform: ${pitch_transform}
   online_encoders: ${f0.online_encoders}
 
 trainer:

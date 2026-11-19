@@ -1,6 +1,7 @@
 import pytest
 import torch
-from codec_attribute_control.code_head import pitch_inputs, GlobalContextPitchCodeHead
+from codec_attribute_control.pitch_transform import pitch_inputs, PitchInputTransform
+from codec_attribute_control.code_head import GlobalContextPitchCodeHead
 
 
 def test_utterance_normalization_ignores_unvoiced_and_padding():
@@ -10,7 +11,7 @@ def test_utterance_normalization_ignores_unvoiced_and_padding():
     assert valid.tolist() == [[True, True, True, True, False]]
     assert pitch[0, 2] == 0 and pitch[0, 4] == 0
     assert torch.isclose(pitch[0, voiced[0]].mean(), torch.tensor(0.), atol=1e-5)
-    assert torch.isclose(pitch[0, voiced[0]].square().mean(), torch.tensor(1.), atol=1e-5)
+    assert torch.isclose(pitch[0, voiced[0]].square().sum(), torch.tensor(2.), atol=1e-5)
 
 
 def test_constant_and_unvoiced_are_finite():
@@ -30,6 +31,7 @@ def test_global_requires_stats():
 @pytest.mark.parametrize("normalization", ["none", "utterance", "global"])
 def test_cnn_shape(normalization):
     kwargs = dict(global_mean=7., global_std=2.) if normalization == "global" else {}
-    head = GlobalContextPitchCodeHead(codebook_size=12, hidden_size=8, dilations=(1,), normalization=normalization, **kwargs)
-    logits = head(torch.tensor([[100., 200., 0.]]), lengths=torch.tensor([3]))
+    head = GlobalContextPitchCodeHead(codebook_size=12, hidden_size=8, dilations=(1,))
+    transformed = PitchInputTransform(normalization=normalization, **kwargs)(torch.tensor([[100., 200., 0.]]))
+    logits = head(transformed, lengths=torch.tensor([3]))
     assert logits.shape == (1, 3, 12)
