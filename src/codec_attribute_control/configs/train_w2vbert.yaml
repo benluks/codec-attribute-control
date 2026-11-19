@@ -1,0 +1,17 @@
+# Dedicated entry point config: same probe/training machinery, different frozen encoder.
+defaults:
+  - train
+  - override /codes: w2vbert_reconstruction
+  - _self_
+
+reconstruction_checkpoint: ???
+reconstruction_revision: da985ba0987f70aaeb84a80f2851cfac8c697a7b
+f0_backend: world
+target_mode: log2
+align_f0_to_features: true
+experiment_name: w2vbert-reconstruction-f0-${hydra:runtime.choices.head}-ctx${oc.select:head.context_size,na}-${target_mode}-${f0_backend}
+head:
+  input_dim: 1024
+trainer:
+  module:
+    align_f0_to_features: ${align_f0_to_features}
