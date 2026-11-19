@@ -109,3 +109,29 @@ uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collection
 ```
 
 Both commands default to `./outputs/precomputed/prosody_codes/facodec`; override `codes_cache_root` in either config. The pitch-to-code classifier reads code IDs directly. With both caches selected, `train-pitch-codes codes=cached f0=cached f0_backend=world` trains without loading audio. The F0 regression probe projects the same cached IDs through the frozen prosody codebook.
+
+## W2V-BERT reconstruction-latent pitch probe
+
+This experiment reuses Quick Convert's existing `W2VBertContentEncoder` and
+`LayerWeightedSum`. It loads the **learned 24-layer fusion weights** from a
+W2V-BERT + CosyVoice DiT SSL-reconstruction Lightning checkpoint, freezes the
+encoder and fusion, and trains only one of the existing F0 heads. W2V-BERT
+features are 50 Hz, so the existing 80 Hz WORLD F0 labels are sampled onto
+the 50 Hz feature timestamps (unvoiced frames remain excluded).
+
+```bash
+uv sync --extra train
+uv run --extra train train-w2vbert-probe \
+  data_root=/cfs/collections \
+  reconstruction_checkpoint=/path/to/w2vbert_dit_cosyvoice_librispeech.ckpt \
+  head=mlp 'head.hidden_sizes=[512]' head.context_size=3 \
+  head.activation=gelu f0=cached f0_backend=world \
+  target_mode=log2
+```
+
+Other supported heads: `head=facodec_cnn` (temporal CNN) and
+`head=contextual`. The default is absolute log₂ F0; the target normalization
+is not identical to the original SSL-probe experiment's global z-score, so
+compare correlation and R² only after matching metric definitions. The
+reconstruction checkpoint must contain `system.feature_transform.weights`.
+A checkpoint path is required; no W&B download happens automatically.
