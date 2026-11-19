@@ -1,6 +1,8 @@
 """Pitch adapter for Quick Convert feature precomputation."""
 
+import json
 from concurrent.futures import ProcessPoolExecutor
+from copy import copy
 from multiprocessing import get_context
 
 import torch
@@ -21,7 +23,44 @@ def _world_contour(waveform):
 
 
 class PitchPrecomputePipeline(PrecomputeFeaturesPipeline):
-    def run(self, pitch_workers=1):
+    def run(self, pitch_workers=1, num_shards=1, shard_index=0):
+        if type(num_shards) is not int or num_shards < 1:
+            raise ValueError("num_shards must be a positive integer")
+        if type(shard_index) is not int or not 0 <= shard_index < num_shards:
+            raise ValueError("shard_index must be in [0, num_shards)")
+        if num_shards == 1:
+            return self._run_pitch(pitch_workers)
+
+        root, cache_key, dataset = self.out_root, self.cache_key, self.dataset
+        self.cache_key = json.dumps([cache_key, num_shards])
+        try:
+            # All hosts must agree on inputs, extractor configuration and shard count.
+            _, _, digest = super()._plan()
+            super()._check_identity(digest)
+
+            self.dataset = copy(dataset)
+            self.dataset.rows = dataset.rows[shard_index::num_shards]
+            self._shared_root = root
+            self.out_root = root / ".shards" / str(shard_index)
+            return self._run_pitch(pitch_workers)
+        finally:
+            self.out_root, self.cache_key, self.dataset = root, cache_key, dataset
+            self._shared_root = None
+
+    _shared_root = None
+
+    def _plan(self):
+        if self._shared_root is None:
+            return super()._plan()
+
+        manifest_root = self.out_root
+        self.out_root = self._shared_root
+        try:
+            return super()._plan()
+        finally:
+            self.out_root = manifest_root
+
+    def _run_pitch(self, pitch_workers):
         if type(pitch_workers) is not int or pitch_workers < 1:
             raise ValueError("pitch_workers must be a positive integer")
         if pitch_workers == 1:
