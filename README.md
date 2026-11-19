@@ -109,3 +109,26 @@ uv run --extra train --extra facodec train-pitch-codes data_root=/cfs/collection
 ```
 
 Both commands default to `./outputs/precomputed/prosody_codes/facodec`; override `codes_cache_root` in either config. The pitch-to-code classifier reads code IDs directly. With both caches selected, `train-pitch-codes codes=cached f0=cached f0_backend=world` trains without loading audio. The F0 regression probe projects the same cached IDs through the frozen prosody codebook.
+
+## Praat (Amphion-style) F0
+
+The `praat` backend uses `praat-parselmouth` with Praat autocorrelation
+(`to_pitch_ac`), a 12.5 ms time step, 0.6 voicing threshold, and 60–640 Hz
+pitch bounds. The algorithm and threshold match Amphion's
+`get_f0_features_using_parselmouth`; the pitch bounds are explicit defaults
+and can be adjusted in code. Unlike treating the first Praat pitch frame as
+time zero, we align by Praat's actual timestamps.
+
+```bash
+uv sync --extra train --extra praat
+uv run --extra train --extra praat precompute-f0 \
+  data_root=/cfs/collections f0_backend=praat \
+  splits='[train-clean-100,dev-clean]' \
+  batch_size=16 num_workers=2 pitch_workers=4
+uv run --extra train --extra praat train-probe \
+  data_root=/cfs/collections f0=cached f0_backend=praat
+```
+
+Outputs are isolated under `outputs/precomputed/f0/praat`, with the same
+QC provenance checks, resumability, and optional multi-machine sharding as
+WORLD. The saved tensors contain Hz on voiced frames and NaN otherwise.
