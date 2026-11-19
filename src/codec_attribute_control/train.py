@@ -57,3 +57,8 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
+
+
+@hydra.main(version_base=None, config_path="configs", config_name="train_w2vbert")
+def main_w2vbert(cfg):
+    run_training(cfg)
