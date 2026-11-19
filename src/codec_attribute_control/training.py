@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 import torch
 from quick_convert.training.lightning.modules.base import BaseTrainingModule
-from quick_convert.training.lightning.logging.media_logger import WandbMediaLogger
 
 from .metrics import F0ProbeMetrics
 from .plotting import make_f0_figure
@@ -75,7 +74,7 @@ class F0ProbeTrainingModule(BaseTrainingModule):
         if figure is None:
             return
         try:
-            WandbMediaLogger(logger).log_figure("val/f0_curves_hz", figure, step=self.global_step)
+            logger.log_image("val/f0_curves_hz", images=[figure], step=self.global_step)
         finally:
             plt.close(figure)
 
