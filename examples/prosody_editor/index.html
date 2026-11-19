@@ -2,7 +2,7 @@
 :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#10141c;color:#e9eef8}body{margin:0;padding:26px;max-width:1100px;margin:auto}h1{font-size:24px;margin:0 0 5px}.sub{color:#a9b4c5;margin:0 0 24px}section{background:#1a2130;border:1px solid #344052;border-radius:14px;padding:18px;margin:14px 0}button,select,input::file-selector-button{background:#283449;color:#eaf1fb;border:1px solid #4b5a72;border-radius:8px;padding:9px 13px;cursor:pointer}button:hover{background:#354764}button:disabled{opacity:.4;cursor:not-allowed}input[type=file]{max-width:100%}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{font-size:13px;color:#b7c2d2}canvas{width:100%;display:block;touch-action:none}#pitch{height:340px;cursor:grab}#pitch:active{cursor:grabbing}#wave{height:85px}.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:#c5d0df;margin-bottom:12px}.key{display:inline-block;width:17px;height:3px;vertical-align:middle;margin-right:7px}.muted{color:#a9b4c5;font-size:13px}.status{padding:10px;background:#121b29;border-radius:8px;margin-top:12px;font-size:13px}.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}input[type=range]{width:160px}.pill{font-size:12px;background:#26344a;border-radius:20px;padding:5px 10px}.foot{font-size:12px;color:#94a1b3;margin-top:15px}#error{font-variant-numeric:tabular-nums}
 </style></head><body><h1>Prosody conversion editor</h1><p class="sub">Edit a target F0 contour, then compare it with the pitch actually realized by a conversion model.</p>
 <section><div class="toolbar"><label>Load utterance <input id="file" type="file" accept="audio/*"></label><button id="demo">Load synthetic example</button><span class="pill" id="filename">No audio loaded</span></div><canvas id="wave"></canvas><div class="toolbar"><button id="playOriginal" disabled>▶ Original</button><button id="playConverted" disabled>▶ Converted</button><button id="stop">■ Stop</button><span class="muted" id="duration"></span></div></section>
-<section><div class="legend"><span><i class="key" style="background:#717987"></i>Original F0</span><span><i class="key" style="background:#5d9dff"></i>Target F0 · draggable</span><span><i class="key" style="background:#f5ad5a"></i>Realized F0</span></div><canvas id="pitch"></canvas><div class="controls"><button id="reset">Reset target</button><button id="zoomOut">− Zoom</button><button id="zoomIn">+ Zoom</button><button id="zoomReset">Fit</button><span id="zoomLabel" class="muted">100%</span><button id="up">+2 semitones</button><button id="down">−2 semitones</button><label class="muted">Brush width <input type="range" id="brush" min="15" max="400" value="70" step="5"></label><span id="brushValue" class="muted">70 ms</span><label class="muted">Smoothness <input type="range" id="smooth" min="0" max="100" value="30"></label><span id="smoothValue" class="muted">30%</span></div><p class="muted">Pinch on your Mac trackpad to zoom horizontally around the cursor; two-finger scroll pans when zoomed. Grab the blue line anywhere and drag freely. Dragging deforms the contour in both time and pitch, with adjustable influence width and smoothness. Gray is the unchanged original; gaps remain unvoiced. Double-click to restore a small local region.</p></section>
+<section><div class="legend"><span><i class="key" style="background:#717987"></i>Original F0</span><span><i class="key" style="background:#5d9dff"></i>Target F0 · draggable</span><span><i class="key" style="background:#f5ad5a"></i>Realized F0</span></div><canvas id="pitch"></canvas><div class="controls"><button id="reset">Reset target</button><button id="undo">Undo</button><button id="redo">Redo</button><button id="deleteNode">Delete node</button><button id="bypass">Bypass node</button><span class="pill" id="editCount">0 edits</span><button id="zoomOut">− Zoom</button><button id="zoomIn">+ Zoom</button><button id="zoomReset">Fit</button><span id="zoomLabel" class="muted">100%</span><button id="up">+2 semitones</button><button id="down">−2 semitones</button><label class="muted">Brush width <input type="range" id="brush" min="15" max="400" value="70" step="5"></label><span id="brushValue" class="muted">70 ms</span><label class="muted">Shape: bell → plateau <input type="range" id="shape" min="0" max="100" value="15"></label><span id="shapeValue" class="muted">15%</span></div><p class="muted">Drag the blue contour to create an edit node; drag an existing handle to adjust it. Interior edits are bell-shaped; near voiced edges they automatically become shelves. Select a handle to adjust its width and shape, bypass it, or delete it (double-click or Delete). Shift-drag for fine adjustment. Pinch to zoom; two-finger scroll to pan. Each edit stays within its voiced segment.</p></section>
 <section><div class="toolbar"><label>Conversion backend <select id="backend"><option value="none">Not connected (UI preview)</option></select></label><button id="convert" disabled>Convert utterance</button><label class="muted">Load converted audio <input id="convertedFile" type="file" accept="audio/*"></label></div><div class="status" id="status">Load an utterance to begin. This standalone HTML supports F0 analysis and target editing. A model backend must be connected for synthesis.</div><p class="muted" id="error"></p></section>
 <p class="foot">Runs locally in your browser. Audio is not uploaded anywhere. Pitch extraction uses a lightweight browser autocorrelation estimator (80 Hz frame rate); for research-grade comparison, use the same validated F0 extractor on original and converted speech in the backend.</p>
 <script>
@@ -11,23 +11,90 @@ function size(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width
 function f0(buf){const sr=buf.sampleRate,mono=buf.getChannelData(0),hop=Math.max(1,Math.round(sr/80)),win=Math.round(sr*.045),out=[];let maxAmp=0;for(let i=0;i<mono.length;i+=100)maxAmp=Math.max(maxAmp,Math.abs(mono[i]));for(let center=0;center<mono.length;center+=hop){let start=Math.max(0,Math.min(mono.length-win,center-Math.floor(win/2))),n=Math.min(win,mono.length-start);if(n<256)break;let rms=0;for(let j=0;j<n;j+=2)rms+=mono[start+j]**2;rms=Math.sqrt(rms/(n/2));let pitch=null;if(rms>Math.max(.006,maxAmp*.035)){let best=-Infinity,lag=0,min=Math.floor(sr/450),max=Math.min(Math.floor(sr/70),Math.floor(n/2));for(let l=min;l<=max;l+=1){let dot=0,a=0,b=0;for(let j=0;j<n-l;j+=3){let x=mono[start+j],y=mono[start+j+l];dot+=x*y;a+=x*x;b+=y*y}let score=dot/Math.sqrt(a*b+1e-12);if(score>best){best=score;lag=l}}if(best>.78)pitch=sr/lag}out.push({t:center/sr,hz:pitch})}return out}
 function sample(arr,t){if(!arr.length)return null;let step=arr.length>1?arr[1].t-arr[0].t:.02,i=Math.min(arr.length-1,Math.max(0,Math.round(t/step)));return arr[i].hz}
 function baseAt(t){return sample(origF,t)}
-// Every extracted frame is editable; there are no sparse anchors. Store pitch offsets
-// in semitones to make a fixed vertical gesture perceptually comparable across F0.
-let offsets=[],stroke=null,hoverT=null,viewStart=0,viewSpan=4;
-function targetAt(t){let b=baseAt(t);if(b==null)return null;let i=Math.max(0,Math.min(offsets.length-1,Math.round(t/(origF[1]?.t-origF[0]?.t||.0125))));return b*Math.pow(2,(offsets[i]||0)/12)}
-function reset(){if(!original)return;offsets=new Array(origF.length).fill(0);stroke=null;draw()}
+// Non-destructive node model: the target is always recomputed from the original.
+let nodes=[],selected=null,stroke=null,hoverT=null,viewStart=0,viewSpan=4,history=[],future=[],nextId=1;
+let offsets=[];
+const step=()=>origF[1]?.t-origF[0]?.t||.0125;
+function targetAt(t){const b=baseAt(t);if(b==null)return null;const i=Math.max(0,Math.min(offsets.length-1,Math.round(t/step())));return b*Math.pow(2,(offsets[i]||0)/12)}
+function snapshotState(){return JSON.stringify(nodes)}
+function checkpoint(){history.push(snapshotState());if(history.length>100)history.shift();future=[]}
+function restoreState(s){nodes=JSON.parse(s);selected=null;renderNodes()}
+function reset(){if(!original)return;checkpoint();nodes=[];selected=null;renderNodes()}
+function updateNodeUI(){const n=nodes.find(n=>n.id===selected);$('editCount').textContent=nodes.length+' edit'+(nodes.length===1?'':'s');$('deleteNode').disabled=!n;$('bypass').disabled=!n;$('bypass').textContent=n&&!n.enabled?'Enable node':'Bypass node';$('undo').disabled=!history.length;$('redo').disabled=!future.length;if(n){$('brush').value=Math.round(n.width*1000);$('shape').value=Math.round(n.shape*100);}$('brushValue').textContent=$('brush').value+' ms';$('shapeValue').textContent=$('shape').value+'%'}
+function voicedSegment(at){if(at<0||at>=origF.length||origF[at].hz==null)return null;let lo=at,hi=at;while(lo>0&&origF[lo-1].hz!=null)lo--;while(hi+1<origF.length&&origF[hi+1].hz!=null)hi++;return {lo,hi}}
+function centerOf(n){return Math.max(origF[n.lo].t,Math.min(origF[n.hi].t,n.t+n.dx))}
+function influence(t,n){
+ const a=origF[n.lo]?.t,b=origF[n.hi]?.t;
+ if(a==null||b==null||t<a||t>b)return 0;
+ const center=centerOf(n),radius=Math.max(.015,n.width);
+ // The edge transition is continuous: the envelope is simply truncated at
+ // the voiced boundary. No discrete bell/shelf mode switch or cross-gap bleed.
+ const u=Math.abs(t-center)/radius;
+ if(u>=1)return 0;
+ const p=2+22*n.shape*n.shape;
+ const plateau=Math.pow(Math.max(0,1-Math.pow(u,p)),1/p);
+ const bell=Math.pow(Math.max(0,1-u*u),2);
+ return (1-n.shape)*bell+n.shape*plateau;
+}
+function otherSemitones(t,except){
+ let sum=0;
+ for(const n of nodes)if(n.id!==except&&n.enabled)sum+=n.dy*influence(t,n);
+ return sum;
+}
+function fitNodeToPitch(n,desiredHz){
+ const t=centerOf(n),base=baseAt(t);
+ if(base==null||!Number.isFinite(desiredHz)||desiredHz<=0)return;
+ // The handle is constrained to lie on the SUM of all enabled contributions.
+ n.dy=(12*Math.log2(desiredHz/base)-otherSemitones(t,n.id))/Math.max(1e-9,influence(t,n));
+}
+function renderNodes(){
+ if(!origF.length){draw();return}
+ const values=origF.map(f=>f.hz==null?null:Math.log2(f.hz));
+ // Independent EQ-style contributions: moving a node moves its entire envelope.
+ // Other nodes remain unchanged when this one is moved or deleted.
+ for(const n of nodes){
+  if(!n.enabled)continue;
+  for(let i=n.lo;i<=n.hi;i++){
+   if(values[i]==null)continue;
+   const w=influence(origF[i].t,n);
+   values[i]+=n.dy*w/12;
+  }
+ }
+ offsets=values.map((v,i)=>v==null?0:12*(v-Math.log2(origF[i].hz)));
+ updateNodeUI();draw()
+}
+function nodePitch(n){
+ const center=centerOf(n);
+ const baseline=sample(origF,center);
+ if(baseline==null)return null;
+ // At the handle, the sum of all active nodes is the visible contour.
+ return targetAt(center);
+}
+function nodeAt(q){const x=t=>48+(t-viewStart)/viewSpan*(q.W-66),y=hz=>q.H-30-(Math.log2(Math.max(60,hz)/60)/Math.log2(500/60))*(q.H-50);let best=null,dist=Infinity;for(const n of nodes){const t=centerOf(n),hz=nodePitch(n);if(hz==null)continue;const d=Math.hypot(q.x-x(t),q.y-y(hz));if(d<13&&d<dist){best=n;dist=d}}return best}
+function removeSelected(){if(selected==null)return;checkpoint();nodes=nodes.filter(n=>n.id!==selected);selected=null;renderNodes()}
 function plotCurve(g,frames,col,width,fn,x,y,alpha=1){g.save();g.globalAlpha=alpha;g.strokeStyle=col;g.lineWidth=width;g.lineJoin='round';g.lineCap='round';g.beginPath();let active=false,lastT=-1;for(let i=0;i<frames.length;i++){let t=frames[i].t,hz=fn?fn(t,i):frames[i].hz;if(hz==null){active=false;continue}if(lastT>=0&&t-lastT>.04)active=false;if(!active)g.moveTo(x(t),y(hz));else g.lineTo(x(t),y(hz));active=true;lastT=t}g.stroke();g.restore()}
 function draw(){let {g,W,H}=size(p),L=48,R=18,T=20,B=30,dur=original?.duration||4,x=t=>L+((t-viewStart)/viewSpan)*(W-L-R),y=hz=>H-B-(Math.log2(Math.max(60,hz)/60)/Math.log2(500/60))*(H-T-B);g.clearRect(0,0,W,H);g.font='12px system-ui';g.textAlign='right';for(let hz of [75,100,150,200,300,400]){let yy=y(hz);g.strokeStyle='#344052';g.lineWidth=1;g.beginPath();g.moveTo(L,yy);g.lineTo(W-R,yy);g.stroke();g.fillStyle='#9daabc';g.fillText(hz+'',L-8,yy+4)}g.textAlign='center';for(let i=0;i<=4;i++){let t=viewStart+viewSpan*i/4,xx=x(t);g.fillStyle='#9daabc';g.fillText(t.toFixed(1)+'s',xx,H-7)}
 g.save();g.beginPath();g.rect(L,T,W-L-R,H-T-B);g.clip();plotCurve(g,origF,'#b8c0cb',2,null,x,y,.28);
 plotCurve(g,origF,blue,2.6,targetAt,x,y);
 plotCurve(g,realF,orange,2.5,null,x,y,.94);g.restore();
+if(original){for(const n of nodes){const t=centerOf(n),hz=nodePitch(n);if(hz==null||t<viewStart||t>viewStart+viewSpan)continue;const xx=x(t),yy=y(hz),active=n.id===selected;g.save();if(active){g.fillStyle='rgba(93,157,255,.10)';g.fillRect(x(Math.max(origF[n.lo].t,centerOf(n)-n.width)),T,x(Math.min(origF[n.hi].t,centerOf(n)+n.width))-x(Math.max(origF[n.lo].t,centerOf(n)-n.width)),H-T-B)}g.beginPath();g.arc(xx,yy,active?7:5,0,2*Math.PI);g.fillStyle=n.enabled?'#e8f3ff':'#66778d';g.fill();g.lineWidth=active?3:1.5;g.strokeStyle=active?'#5d9dff':'#22354d';g.stroke();g.restore()}}
 if(original&&hoverT!=null){let hz=targetAt(hoverT);if(hz!=null){let xx=x(hoverT),yy=y(hz);g.strokeStyle='rgba(93,157,255,.25)';g.beginPath();g.arc(xx,yy,Math.max(10,(Number($('brush').value)/1000/viewSpan)*(W-L-R)/2),0,Math.PI*2);g.stroke();g.beginPath();g.arc(xx,yy,3,0,2*Math.PI);g.fillStyle=blue;g.fill()}}}
 function wave(){let {g,W,H}=size(w);g.clearRect(0,0,W,H);g.fillStyle='#131b28';g.fillRect(0,0,W,H);if(!original)return;let data=original.getChannelData(0),mid=H/2;g.strokeStyle='#85a9dc';g.lineWidth=1;for(let px=0;px<W;px++){let a=Math.floor(px/W*data.length),b=Math.max(a+1,Math.floor((px+1)/W*data.length)),min=1,max=-1;for(let j=a;j<b;j+=Math.max(1,Math.floor((b-a)/30))){let v=data[j];min=Math.min(min,v);max=Math.max(max,v)}g.beginPath();g.moveTo(px,mid-max*mid*.88);g.lineTo(px,mid-min*mid*.88);g.stroke()}}
-function setOriginal(b,name){viewStart=0;viewSpan=b.duration;updateZoomLabel();original=b;converted=null;realF=[];origF=f0(b);$('filename').textContent=name;$('duration').textContent=b.duration.toFixed(2)+' s';$('playOriginal').disabled=false;$('playConverted').disabled=true;$('convert').disabled=true;reset();wave();$('status').textContent='Original F0 estimated. Edit the blue curve, then connect a converter or load a converted file to compare.'}
+function setOriginal(b,name){viewStart=0;viewSpan=b.duration;updateZoomLabel();original=b;converted=null;realF=[];origF=f0(b);$('filename').textContent=name;$('duration').textContent=b.duration.toFixed(2)+' s';$('playOriginal').disabled=false;$('playConverted').disabled=true;$('convert').disabled=true;reset();wave();history=[];future=[];nextId=1;$('status').textContent='Original F0 estimated. Edit the blue curve, then connect a converter or load a converted file to compare.'}
 function play(b){if(!b)return;stop();ctx.resume();source=ctx.createBufferSource();source.buffer=b;source.connect(ctx.destination);source.onended=()=>{source=null};source.start()};function stop(){if(source){try{source.stop()}catch{}source=null}}
 $('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{setOriginal(await ctx.decodeAudioData(await f.arrayBuffer()),f.name)}catch(err){$('status').textContent='Could not decode audio: '+err.message}};
 $('convertedFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{converted=await ctx.decodeAudioData(await f.arrayBuffer());realF=f0(converted);$('playConverted').disabled=false;draw();let err=[],dur=Math.min(original?.duration||0,converted.duration);for(let t=0;t<dur;t+=.02){let r=sample(realF,t),v=targetAt(t);if(r!=null&&v!=null)err.push(Math.abs(12*Math.log2(r/v)))}$('error').textContent=err.length?'Mean absolute pitch error (voiced, time-aligned assumption): '+(err.reduce((a,b)=>a+b,0)/err.length).toFixed(2)+' semitones':'No overlapping voiced F0 frames found.';$('status').textContent='Converted audio loaded; orange contour is measured from that file. Check timing alignment before interpreting the error.'}catch(err){$('status').textContent='Could not decode converted audio: '+err.message}};
-$('playOriginal').onclick=()=>play(original);$('playConverted').onclick=()=>play(converted);$('stop').onclick=stop;$('reset').onclick=reset;$('up').onclick=()=>{offsets=offsets.map(v=>v+2);draw()};$('down').onclick=()=>{offsets=offsets.map(v=>v-2);draw()};$('brush').oninput=()=>{$('brushValue').textContent=$('brush').value+' ms';draw()};$('smooth').oninput=()=>{$('smoothValue').textContent=$('smooth').value+'%';draw()};
+$('playOriginal').onclick=()=>play(original);$('playConverted').onclick=()=>play(converted);$('stop').onclick=stop;$('reset').onclick=reset;
+$('undo').onclick=()=>{if(!history.length)return;future.push(snapshotState());restoreState(history.pop())};
+$('redo').onclick=()=>{if(!future.length)return;history.push(snapshotState());restoreState(future.pop())};
+$('deleteNode').onclick=removeSelected;
+$('bypass').onclick=()=>{const n=nodes.find(n=>n.id===selected);if(!n)return;checkpoint();n.enabled=!n.enabled;renderNodes()};
+$('up').onclick=()=>{if(!original)return;checkpoint();for(let i=0;i<origF.length;i++){if(origF[i].hz==null)continue;const seg=voicedSegment(i);nodes.push({id:nextId++,lo:seg.lo,hi:seg.hi,t:(origF[seg.lo].t+origF[seg.hi].t)/2,dx:0,dy:2,width:Math.max(.015,(origF[seg.hi].t-origF[seg.lo].t)/2),shape:1,enabled:true});i=seg.hi}renderNodes()};
+$('down').onclick=()=>{if(!original)return;checkpoint();for(let i=0;i<origF.length;i++){if(origF[i].hz==null)continue;const seg=voicedSegment(i);nodes.push({id:nextId++,lo:seg.lo,hi:seg.hi,t:(origF[seg.lo].t+origF[seg.hi].t)/2,dx:0,dy:-2,width:Math.max(.015,(origF[seg.hi].t-origF[seg.lo].t)/2),shape:1,enabled:true});i=seg.hi}renderNodes()};
+$('brush').oninput=()=>{const n=nodes.find(n=>n.id===selected);if(n){if(!window.sliderEditing){checkpoint();window.sliderEditing=true}n.width=Number($('brush').value)/1000;renderNodes()}else $('brushValue').textContent=$('brush').value+' ms'};
+$('shape').oninput=()=>{const n=nodes.find(n=>n.id===selected);if(n){if(!window.sliderEditing){checkpoint();window.sliderEditing=true}n.shape=Number($('shape').value)/100;renderNodes()}else $('shapeValue').textContent=$('shape').value+'%'};
+for(const id of ['brush','shape'])$(id).addEventListener('change',()=>window.sliderEditing=false);
+window.addEventListener('keydown',e=>{if((e.key==='Delete'||e.key==='Backspace')&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();removeSelected()}if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)$('redo').click();else $('undo').click()}});
 
 function updateZoomLabel(){let d=original?.duration||viewSpan;$('zoomLabel').textContent=Math.round(d/viewSpan*100)+'%'}
 function zoom(factor,anchor=.5){
@@ -55,79 +122,53 @@ p.addEventListener('wheel',e=>{
 function pos(e){let r=p.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top,W:r.width,H:r.height}}
 function timeAt(q){return Math.max(0,Math.min(original.duration,viewStart+(q.x-48)/(q.W-66)*viewSpan))}
 function hzAt(q){return Math.max(60,Math.min(500,60*Math.pow(500/60,(q.H-30-q.y)/(q.H-50))))}
-function edit(e,restore=false){if(!original)return;let q=pos(e),t=timeAt(q),hz=hzAt(q),cur=targetAt(t);if(cur==null)return;
- let aim=restore?0:12*Math.log2(hz/baseAt(t));if(!Number.isFinite(aim))return;
- let width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100;
- // Raised-cosine / Gaussian spatial falloff around pointer; smoothly tapered edges.
- // Drag strokes operate on a per-stroke snapshot, preventing cumulative overshoot.
- let sigma=Math.max(.006,width*(.10+.22*sm));
- let at=Math.max(0,Math.min(offsets.length-1,Math.round(t/(origF[1]?.t-origF[0]?.t||.0125))));
- let snapshot=stroke?.snapshot||offsets.slice();
- let value=restore?0:aim;
- for(let i=0;i<origF.length;i++){
-  if(origF[i].hz==null)continue;
-  const dist=Math.abs(origF[i].t-t);if(dist>width)continue;
-  let weight=Math.exp(-.5*Math.pow(dist/sigma,2));
-  // Very low smoothness gives localized fine editing; high smoothness broadens the influence.
-  offsets[i]=snapshot[i]+(value-snapshot[at])*weight;
+p.onpointerdown=e=>{if(!original||e.button!==0)return;
+ const q=pos(e),existing=nodeAt(q);
+ if(existing){
+  selected=existing.id;
+  stroke={q,existing:true,id:existing.id,original:{...existing},before:snapshotState(),startHz:nodePitch(existing),changed:false};
+  p.setPointerCapture(e.pointerId);renderNodes();return;
  }
- draw();}
-// A drag is a deformation of a frozen contour, not a sequence of brush stamps.
-// Sample the snapshot through an inverse, monotonic local time warp.
-function snapshotPitch(snapshot,t){
- const step=origF[1]?.t-origF[0]?.t||.0125,idx=t/step;
- const lo=Math.floor(idx),hi=Math.ceil(idx);
- if(lo<0||hi>=origF.length||origF[lo].hz==null||origF[hi].hz==null)return null;
- const alpha=idx-lo;
- const p0=Math.log2(origF[lo].hz)+snapshot[lo]/12;
- const p1=Math.log2(origF[hi].hz)+snapshot[hi]/12;
- return (1-alpha)*p0+alpha*p1;
-}
-function deform(start,dx,dy){
- const width=Number($('brush').value)/1000;
- const smooth=Number($('smooth').value)/100;
- // Broad enough to move a feature in time, but local to the grabbed region.
- const sigma=Math.max(.012,width*(.45+.45*smooth),Math.abs(dx)*2.5);
- // Gaussian time displacement has derivative bounded by |dx|/(sigma*sqrt(e)).
- // sigma >= 2.5*|dx| keeps the mapping monotonic.
- const shift=t=>dx*Math.exp(-.5*((t-start.t)/sigma)**2);
- const pitchShift=t=>dy*Math.exp(-.5*((t-start.t)/sigma)**2);
- for(let i=0;i<origF.length;i++){
-  if(origF[i].hz==null)continue;
-  const t=origF[i].t;
-  // Invert t = source + shift(source) using fixed-point iterations.
-  let source=t;
-  for(let k=0;k<12;k++)source=t-shift(source);
-  const logPitch=snapshotPitch(start.snapshot,source);
-  if(logPitch==null){
-   offsets[i]=start.snapshot[i];
-   continue;
-  }
-  const desired=logPitch+pitchShift(source)/12;
-  offsets[i]=12*(desired-Math.log2(origF[i].hz));
- }
-}
-p.onpointerdown=e=>{
- if(!original||e.button!==0)return;
- const q=pos(e),t=timeAt(q),v=targetAt(t),hz=hzAt(q);
- if(v==null)return;
+ const t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null)return;
  const pxPerOctave=(q.H-50)/Math.log2(500/60);
  if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22)return;
- stroke={t,q,snapshot:offsets.slice()};
- hoverT=t;p.setPointerCapture(e.pointerId);draw();
+ const at=Math.max(0,Math.min(origF.length-1,Math.round(t/step()))),seg=voicedSegment(at);if(!seg)return;
+ const n={id:nextId++,lo:seg.lo,hi:seg.hi,t:origF[at].t,dx:0,dy:0,width:Number($('brush').value)/1000,shape:Number($('shape').value)/100,enabled:true};
+ selected=n.id;stroke={q,existing:false,node:n,before:snapshotState(),startHz:v,changed:false};
+ p.setPointerCapture(e.pointerId);renderNodes();
 };
-p.onpointermove=e=>{
- if(!original)return;
- const q=pos(e),t=timeAt(q);hoverT=t;
+p.onpointermove=e=>{if(!original)return;
+ const q=pos(e);hoverT=timeAt(q);
  if(stroke){
-  const dx=t-stroke.t;
-  const dy=12*Math.log2(hzAt(q)/hzAt(stroke.q));
-  if(Number.isFinite(dy))deform(stroke,dx,dy);
- }
- draw();
+  const fine=e.shiftKey?.2:1;
+  const dx=(timeAt(q)-timeAt(stroke.q))*fine;
+  const dy=12*Math.log2(hzAt(q)/hzAt(stroke.q))*fine;
+  if(Math.abs(q.x-stroke.q.x)+Math.abs(q.y-stroke.q.y)>3)stroke.changed=true;
+  if(stroke.changed){
+   const n=stroke.existing?nodes.find(n=>n.id===stroke.id):stroke.node;
+   if(n){
+    if(!stroke.existing&&!nodes.includes(n))nodes.push(n);
+    n.dx=(stroke.original?.dx||0)+dx;
+    // Move the handle to the requested absolute pitch, compensating for all
+    // other overlapping nodes and the original pitch at the NEW time.
+    const desiredHz=stroke.startHz*Math.pow(2,dy/12);
+    fitNodeToPitch(n,desiredHz);
+    renderNodes();
+   }
+  }
+ }else draw();
 };
-p.onpointerup=p.onpointercancel=()=>{stroke=null;draw()};p.onpointerleave=()=>{if(!stroke){hoverT=null;draw()}};
-p.ondblclick=e=>{if(!original)return;let q=pos(e),t=timeAt(q),width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100,sigma=Math.max(.006,width*(.10+.22*sm));for(let i=0;i<origF.length;i++){let d=Math.abs(origF[i].t-t);let weight=Math.exp(-.5*(d/sigma)**2);offsets[i]*=(1-weight)}draw()};
+p.onpointerup=e=>{if(!stroke)return;
+ if(stroke.changed){
+  // One history entry per completed gesture, not per pointer movement.
+  history.push(stroke.before);if(history.length>100)history.shift();future=[];
+ }
+ stroke=null;renderNodes();
+};
+p.onpointercancel=()=>{if(stroke){if(stroke.existing){const n=nodes.find(n=>n.id===stroke.id);if(n)Object.assign(n,stroke.original)}else nodes=nodes.filter(n=>n.id!==stroke.node.id);stroke=null;renderNodes()}};
+p.onpointerleave=()=>{if(!stroke){hoverT=null;draw()}};
+p.ondblclick=e=>{const n=nodeAt(pos(e));if(n){selected=n.id;removeSelected()}};
 $('demo').onclick=()=>{let sr=16000,dur=4,b=ctx.createBuffer(1,sr*dur,sr),a=b.getChannelData(0);for(let i=0;i<a.length;i++){let t=i/sr,voiced=!(t>.85&&t<1.1)&&!(t>2.2&&t<2.5)&&!(t>3.45&&t<3.7),f=155+21*Math.sin(t*2.6)+12*Math.sin(t*6);a[i]=voiced?.16*Math.sin(2*Math.PI*(155*t+21/(2*Math.PI*2.6)*(1-Math.cos(t*2.6))+12/(2*Math.PI*6)*(1-Math.cos(t*6)))):0}setOriginal(b,'synthetic-example.wav');$('status').textContent='Synthetic voiced-tone example loaded. The converter is not connected.'};window.addEventListener('resize',()=>{draw();wave()});draw();wave();
+(async()=>{try{const raw=atob('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');const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));setOriginal(await ctx.decodeAudioData(bytes.buffer),'007c53c92c8f2d6a5711.ogg')}catch(e){$('status').textContent='Default OGG could not be decoded: '+e.message}})();
 })();
 </script></body></html>
