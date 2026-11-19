@@ -21,9 +21,14 @@ class ProsodyCodePrecomputeExtractor(nn.Module):
         batch.sample_rates = batch.sample_rates.to(device)
         features = self.encoder(batch)
         codes = features.codes
-        if codes.ndim != 4 or codes.shape[0] != 6 or codes.shape[2] != 1:
+        if codes.shape[0] != 6:
             raise ValueError(f"Unexpected FACodec code layout: {tuple(codes.shape)}")
-        prosody = codes[0, :, 0, :]
+        if codes.ndim == 3:
+            prosody = codes[0]
+        elif codes.ndim == 4 and codes.shape[2] == 1:
+            prosody = codes[0, :, 0, :]
+        else:
+            raise ValueError(f"Unexpected FACodec code layout: {tuple(codes.shape)}")
         if torch.any(prosody < 0) or torch.any(prosody > 1023):
             raise ValueError("Prosody code index outside [0,1023]")
         return [values[:int(length)].detach().cpu().to(torch.uint16).contiguous()
