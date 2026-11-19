@@ -2,7 +2,7 @@
 :root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#10141c;color:#e9eef8}body{margin:0;padding:26px;max-width:1100px;margin:auto}h1{font-size:24px;margin:0 0 5px}.sub{color:#a9b4c5;margin:0 0 24px}section{background:#1a2130;border:1px solid #344052;border-radius:14px;padding:18px;margin:14px 0}button,select,input::file-selector-button{background:#283449;color:#eaf1fb;border:1px solid #4b5a72;border-radius:8px;padding:9px 13px;cursor:pointer}button:hover{background:#354764}button:disabled{opacity:.4;cursor:not-allowed}input[type=file]{max-width:100%}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar label{font-size:13px;color:#b7c2d2}canvas{width:100%;display:block;touch-action:none}#pitch{height:340px;cursor:grab}#pitch:active{cursor:grabbing}#wave{height:85px}.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;color:#c5d0df;margin-bottom:12px}.key{display:inline-block;width:17px;height:3px;vertical-align:middle;margin-right:7px}.muted{color:#a9b4c5;font-size:13px}.status{padding:10px;background:#121b29;border-radius:8px;margin-top:12px;font-size:13px}.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}input[type=range]{width:160px}.pill{font-size:12px;background:#26344a;border-radius:20px;padding:5px 10px}.foot{font-size:12px;color:#94a1b3;margin-top:15px}#error{font-variant-numeric:tabular-nums}
 </style></head><body><h1>Prosody conversion editor</h1><p class="sub">Edit a target F0 contour, then compare it with the pitch actually realized by a conversion model.</p>
 <section><div class="toolbar"><label>Load utterance <input id="file" type="file" accept="audio/*"></label><button id="demo">Load synthetic example</button><span class="pill" id="filename">No audio loaded</span></div><canvas id="wave"></canvas><div class="toolbar"><button id="playOriginal" disabled>▶ Original</button><button id="playConverted" disabled>▶ Converted</button><button id="stop">■ Stop</button><span class="muted" id="duration"></span></div></section>
-<section><div class="legend"><span><i class="key" style="background:#717987"></i>Original F0</span><span><i class="key" style="background:#5d9dff"></i>Target F0 · draggable</span><span><i class="key" style="background:#f5ad5a"></i>Realized F0</span></div><canvas id="pitch"></canvas><div class="controls"><button id="reset">Reset target</button><button id="zoomOut">− Zoom</button><button id="zoomIn">+ Zoom</button><button id="zoomReset">Fit</button><span id="zoomLabel" class="muted">100%</span><button id="up">+2 semitones</button><button id="down">−2 semitones</button><label class="muted">Brush width <input type="range" id="brush" min="15" max="400" value="70" step="5"></label><span id="brushValue" class="muted">70 ms</span><label class="muted">Smoothness <input type="range" id="smooth" min="0" max="100" value="30"></label><span id="smoothValue" class="muted">30%</span></div><p class="muted">Pinch on your Mac trackpad to zoom horizontally around the cursor; two-finger scroll pans when zoomed. Grab the blue line anywhere and drag freely. Dragging paints a smooth local pitch adjustment, with adjustable brush width and smoothness. Gray is the unchanged original; gaps remain unvoiced. Double-click to restore a small local region.</p></section>
+<section><div class="legend"><span><i class="key" style="background:#717987"></i>Original F0</span><span><i class="key" style="background:#5d9dff"></i>Target F0 · draggable</span><span><i class="key" style="background:#f5ad5a"></i>Realized F0</span></div><canvas id="pitch"></canvas><div class="controls"><button id="reset">Reset target</button><button id="zoomOut">− Zoom</button><button id="zoomIn">+ Zoom</button><button id="zoomReset">Fit</button><span id="zoomLabel" class="muted">100%</span><button id="up">+2 semitones</button><button id="down">−2 semitones</button><label class="muted">Brush width <input type="range" id="brush" min="15" max="400" value="70" step="5"></label><span id="brushValue" class="muted">70 ms</span><label class="muted">Smoothness <input type="range" id="smooth" min="0" max="100" value="30"></label><span id="smoothValue" class="muted">30%</span></div><p class="muted">Pinch on your Mac trackpad to zoom horizontally around the cursor; two-finger scroll pans when zoomed. Grab the blue line anywhere and drag freely. Dragging deforms the contour in both time and pitch, with adjustable influence width and smoothness. Gray is the unchanged original; gaps remain unvoiced. Double-click to restore a small local region.</p></section>
 <section><div class="toolbar"><label>Conversion backend <select id="backend"><option value="none">Not connected (UI preview)</option></select></label><button id="convert" disabled>Convert utterance</button><label class="muted">Load converted audio <input id="convertedFile" type="file" accept="audio/*"></label></div><div class="status" id="status">Load an utterance to begin. This standalone HTML supports F0 analysis and target editing. A model backend must be connected for synthesis.</div><p class="muted" id="error"></p></section>
 <p class="foot">Runs locally in your browser. Audio is not uploaded anywhere. Pitch extraction uses a lightweight browser autocorrelation estimator (80 Hz frame rate); for research-grade comparison, use the same validated F0 extractor on original and converted speech in the backend.</p>
 <script>
@@ -72,30 +72,60 @@ function edit(e,restore=false){if(!original)return;let q=pos(e),t=timeAt(q),hz=h
   offsets[i]=snapshot[i]+(value-snapshot[at])*weight;
  }
  draw();}
-p.onpointerdown=e=>{if(!original||e.button!==0)return;let q=pos(e),t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null)return;
- // Generous hit area on the curve, so the user grabs its contour rather than control points.
- let pxPerOctave=(q.H-50)/Math.log2(500/60);let distance=Math.abs(Math.log2(hz/v)*pxPerOctave);
- if(distance>22)return;
- stroke={lastT:t,lastQ:q};hoverT=t;p.setPointerCapture(e.pointerId);draw();};
-p.onpointermove=e=>{if(!original)return;let q=pos(e),t=timeAt(q);hoverT=t;if(stroke){
-  // Offset is relative to where the stroke began, so the pitch doesn't jump on grabbing.
-  const baseT=stroke.lastT,deltaSemitones=12*Math.log2(hzAt(q)/hzAt(stroke.lastQ));
-  if(baseAt(t)!=null&&Number.isFinite(deltaSemitones)){
-   let width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100,sigma=Math.max(.006,width*(.10+.22*sm));
-   // For each pointer segment, stamp a smooth offset field along the drag path.
-   let count=Math.max(1,Math.ceil(Math.abs(t-baseT)/.0125));
-   for(let k=0;k<=count;k++){
-    let u=k/count,center=baseT+(t-baseT)*u;
-    for(let i=0;i<origF.length;i++){
-     if(origF[i].hz==null)continue;
-     let d=Math.abs(origF[i].t-center);if(d>width)continue;
-     let weight=Math.exp(-.5*(d/sigma)**2);
-     offsets[i]+=deltaSemitones/count*weight;
-    }
-   }
+// A drag is a deformation of a frozen contour, not a sequence of brush stamps.
+// Sample the snapshot through an inverse, monotonic local time warp.
+function snapshotPitch(snapshot,t){
+ const step=origF[1]?.t-origF[0]?.t||.0125,idx=t/step;
+ const lo=Math.floor(idx),hi=Math.ceil(idx);
+ if(lo<0||hi>=origF.length||origF[lo].hz==null||origF[hi].hz==null)return null;
+ const alpha=idx-lo;
+ const p0=Math.log2(origF[lo].hz)+snapshot[lo]/12;
+ const p1=Math.log2(origF[hi].hz)+snapshot[hi]/12;
+ return (1-alpha)*p0+alpha*p1;
+}
+function deform(start,dx,dy){
+ const width=Number($('brush').value)/1000;
+ const smooth=Number($('smooth').value)/100;
+ // Broad enough to move a feature in time, but local to the grabbed region.
+ const sigma=Math.max(.012,width*(.45+.45*smooth),Math.abs(dx)*2.5);
+ // Gaussian time displacement has derivative bounded by |dx|/(sigma*sqrt(e)).
+ // sigma >= 2.5*|dx| keeps the mapping monotonic.
+ const shift=t=>dx*Math.exp(-.5*((t-start.t)/sigma)**2);
+ const pitchShift=t=>dy*Math.exp(-.5*((t-start.t)/sigma)**2);
+ for(let i=0;i<origF.length;i++){
+  if(origF[i].hz==null)continue;
+  const t=origF[i].t;
+  // Invert t = source + shift(source) using fixed-point iterations.
+  let source=t;
+  for(let k=0;k<12;k++)source=t-shift(source);
+  const logPitch=snapshotPitch(start.snapshot,source);
+  if(logPitch==null){
+   offsets[i]=start.snapshot[i];
+   continue;
   }
-  stroke.lastT=t;stroke.lastQ=q;
- }draw()};
+  const desired=logPitch+pitchShift(source)/12;
+  offsets[i]=12*(desired-Math.log2(origF[i].hz));
+ }
+}
+p.onpointerdown=e=>{
+ if(!original||e.button!==0)return;
+ const q=pos(e),t=timeAt(q),v=targetAt(t),hz=hzAt(q);
+ if(v==null)return;
+ const pxPerOctave=(q.H-50)/Math.log2(500/60);
+ if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22)return;
+ stroke={t,q,snapshot:offsets.slice()};
+ hoverT=t;p.setPointerCapture(e.pointerId);draw();
+};
+p.onpointermove=e=>{
+ if(!original)return;
+ const q=pos(e),t=timeAt(q);hoverT=t;
+ if(stroke){
+  const dx=t-stroke.t;
+  const dy=12*Math.log2(hzAt(q)/hzAt(stroke.q));
+  if(Number.isFinite(dy))deform(stroke,dx,dy);
+ }
+ draw();
+};
 p.onpointerup=p.onpointercancel=()=>{stroke=null;draw()};p.onpointerleave=()=>{if(!stroke){hoverT=null;draw()}};
 p.ondblclick=e=>{if(!original)return;let q=pos(e),t=timeAt(q),width=Number($('brush').value)/1000,sm=Number($('smooth').value)/100,sigma=Math.max(.006,width*(.10+.22*sm));for(let i=0;i<origF.length;i++){let d=Math.abs(origF[i].t-t);let weight=Math.exp(-.5*(d/sigma)**2);offsets[i]*=(1-weight)}draw()};
 $('demo').onclick=()=>{let sr=16000,dur=4,b=ctx.createBuffer(1,sr*dur,sr),a=b.getChannelData(0);for(let i=0;i<a.length;i++){let t=i/sr,voiced=!(t>.85&&t<1.1)&&!(t>2.2&&t<2.5)&&!(t>3.45&&t<3.7),f=155+21*Math.sin(t*2.6)+12*Math.sin(t*6);a[i]=voiced?.16*Math.sin(2*Math.PI*(155*t+21/(2*Math.PI*2.6)*(1-Math.cos(t*2.6))+12/(2*Math.PI*6)*(1-Math.cos(t*6)))):0}setOriginal(b,'synthetic-example.wav');$('status').textContent='Synthetic voiced-tone example loaded. The converter is not connected.'};window.addEventListener('resize',()=>{draw();wave()});draw();wave();
