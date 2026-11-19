@@ -32,10 +32,15 @@ uv run --extra train --extra facodec precompute-f0 \
   data_root=/path/to/collections \
   f0_backend=world \
   splits='[train-clean-100,dev-clean]' \
-  batch_size=8
+  batch_size=16 num_workers=2 pitch_workers=4
 ```
 
 This invokes Quick Convert's `PrecomputeFeaturesPipeline` through its existing `execute_pipeline` entry point. The project-specific `F0PrecomputeExtractor` is a thin `extract_batch` adapter over `OnlineF0`. QC handles dataset iteration, provenance checking, atomic writes, skip-existing resumption, and `manifest.jsonl`. Each `.pt` file stores the unpadded `[T,1]` Hz contour.
+
+For WORLD, `pitch_workers` sets the number of CPU processes extracting pitch.
+`num_workers` separately controls audio loading. Set `batch_size` at least as
+large as `pitch_workers` to keep the pool busy. Changing the worker count
+can resume the same cache.
 
 Select the backend with `f0_backend` for precomputation and both trainers:
 

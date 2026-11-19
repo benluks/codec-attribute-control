@@ -68,6 +68,18 @@ def test_world_cache_retains_pitch_and_voicing():
     )
     extractor = F0PrecomputeExtractor(backend="world", device="cuda")
     pitch, silence = extractor.extract_batch(batch)
+    from concurrent.futures import ProcessPoolExecutor
+    from multiprocessing import get_context
+
+    with ProcessPoolExecutor(max_workers=2, mp_context=get_context("spawn")) as pool:
+        extractor.pitch_pool = pool
+        parallel = extractor.extract_batch(batch)
+        repeated = extractor.extract_batch(batch)
+    for expected, first, second in zip(
+        (pitch, silence), parallel, repeated, strict=True
+    ):
+        torch.testing.assert_close(first, expected, atol=0, rtol=0, equal_nan=True)
+        torch.testing.assert_close(second, expected, atol=0, rtol=0, equal_nan=True)
     assert pitch.shape == (121, 1)
     assert silence.shape == (21, 1)
     assert torch.isnan(pitch[:10]).all() and torch.isnan(pitch[-10:]).all()
