@@ -39,11 +39,13 @@ class ResidualDilatedBlock(nn.Module):
     def __init__(self, channels, dilation):
         super().__init__()
         self.conv = nn.Conv1d(channels, channels, 3, padding=dilation, dilation=dilation)
-        self.norm = nn.GroupNorm(1, channels)
+        self.norm = nn.LayerNorm(channels)
         self.activation = nn.GELU()
 
     def forward(self, x):
-        return x + self.activation(self.norm(self.conv(x)))
+        y = self.conv(x).transpose(1, 2)
+        y = self.activation(self.norm(y)).transpose(1, 2)
+        return x + y
 
 
 class GlobalContextPitchCodeHead(nn.Module):
