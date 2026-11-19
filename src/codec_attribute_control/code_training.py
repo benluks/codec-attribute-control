@@ -19,7 +19,7 @@ class PitchCodeTrainingModule(BaseTrainingModule):
             raise ValueError("F0 and code frames must align")
         if resource.lengths is None or not torch.equal(resource.lengths.to(lengths.device), lengths):
             raise ValueError("F0 and code lengths differ")
-        logits = self.system.head(f0.to(codes.device))
+        logits = self.system.head(f0.to(codes.device), lengths=lengths)
         if logits.shape[:2] != codes.shape:
             raise ValueError("Classifier output and codes must align")
         valid = torch.arange(codes.shape[1], device=codes.device)[None, :] < lengths[:, None]
