@@ -31,10 +31,13 @@ class PitchToProsodyCodeSystem(OnlineResourceMixin, InferenceSystem):
             self.encoder.eval()
             with torch.no_grad():
                 features = self.encoder(batch)
-            if features.codes.ndim != 4 or features.codes.shape[0] != 6 or features.codes.shape[2] != 1:
-                raise ValueError(f"Unexpected FACodec code layout: {tuple(features.codes.shape)}")
-            # [6,B,1,T]: first quantizer is the single prosody codebook.
-            codes = features.codes[0, :, 0, :]
+            raw_codes = features.codes
+            if raw_codes.ndim == 3 and raw_codes.shape[0] == 6:
+                codes = raw_codes[0]
+            elif raw_codes.ndim == 4 and raw_codes.shape[0] == 6 and raw_codes.shape[2] == 1:
+                codes = raw_codes[0, :, 0, :]
+            else:
+                raise ValueError(f"Unexpected FACodec code layout: {tuple(raw_codes.shape)}")
             lengths = features.lengths
             if codes.shape != features.streams["prosody"].shape[:2]:
                 raise ValueError("Prosody code and latent frame counts differ")
