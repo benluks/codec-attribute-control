@@ -1,5 +1,6 @@
 """Interchangeable F0 regression heads with shared masked loss."""
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -14,11 +15,14 @@ class MaskedF0RegressionHead(nn.Module):
         return (predictions[valid] - targets[valid]).square().mean()
 
 
-class LinearF0Head(MaskedF0RegressionHead):
+class MLPF0Head(MaskedF0RegressionHead):
     """Linear F0 probe, optionally extended with hidden MLP layers."""
 
-    def __init__(self, input_dim=256, hidden_sizes=None, activation="gelu"):
+    def __init__(self, input_dim=256, hidden_sizes=None, activation="gelu", context_size=1):
         super().__init__()
+        if type(context_size) is not int or context_size < 1 or context_size % 2 == 0:
+            raise ValueError("context_size must be a positive odd integer")
+        self.context_size = context_size
         hidden_sizes = [] if hidden_sizes is None else list(hidden_sizes)
         if any(not isinstance(size, int) or isinstance(size, bool) or size <= 0 for size in hidden_sizes):
             raise ValueError("hidden_sizes must contain positive integers")
@@ -31,7 +35,7 @@ class LinearF0Head(MaskedF0RegressionHead):
         if activation.lower() not in activations:
             raise ValueError(f"Unsupported activation {activation!r}; choose from {sorted(activations)}")
         layers = []
-        previous = input_dim
+        previous = input_dim * context_size
         for size in hidden_sizes:
             layers.extend([nn.Linear(previous, size), activations[activation.lower()]()])
             previous = size
@@ -41,7 +45,14 @@ class LinearF0Head(MaskedF0RegressionHead):
     def forward(self, features):
         if features.ndim != 3:
             raise ValueError("Expected [B,T,C] features")
+        if self.context_size > 1:
+            radius = self.context_size // 2
+            padded = F.pad(features.transpose(1, 2), (radius, radius), mode="replicate")
+            features = padded.unfold(-1, self.context_size, 1).permute(0, 2, 1, 3).flatten(2)
         return self.projection(features).squeeze(-1)
+
+
+LinearF0Head = MLPF0Head  # Compatibility with existing imports/configs.
 
 
 class FACodecCNNF0Head(MaskedF0RegressionHead):

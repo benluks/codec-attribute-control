@@ -2,7 +2,7 @@ defaults:
   - dataset: librispeech
   - f0: online
   - optimization: adamw_cosine
-  - head: linear
+  - head: mlp
   - _self_
 
 data_root: ???

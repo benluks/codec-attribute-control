@@ -1,4 +1,0 @@
-_target_: codec_attribute_control.head.LinearF0Head
-input_dim: 256
-hidden_sizes: []
-activation: gelu
