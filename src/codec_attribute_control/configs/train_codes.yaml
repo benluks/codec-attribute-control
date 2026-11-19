@@ -7,7 +7,8 @@ defaults:
   - _self_
 
 data_root: ???
-f0_cache_root: ./outputs/precomputed/f0/jdc
+f0_backend: jdc
+f0_cache_root: ./outputs/precomputed/f0/${f0_backend}
 codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
 batch_size: 128
 num_workers: 24
@@ -16,7 +17,7 @@ learning_rate: 0.0003
 weight_decay: 0.01
 train_split: train-clean-100
 val_split: dev-clean
-experiment_name: facodec-pitch-to-code-${hydra:runtime.choices.code_head}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
+experiment_name: facodec-pitch-to-code-${hydra:runtime.choices.code_head}-${f0_backend}-${hydra:runtime.choices.dataset}-${train_split}-to-${val_split}
 
 system:
   _target_: codec_attribute_control.code_system.PitchToProsodyCodeSystem

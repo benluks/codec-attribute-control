@@ -30,11 +30,15 @@ def codec():
 )
 def test_pretrained_batch_parity(codec, lengths, extra_padding, monkeypatch):
     if len(lengths) == 5:
-        monkeypatch.setattr("codec_attribute_control.facodec.MAX_BATCH_PADDED_SAMPLES", 36000)
+        monkeypatch.setattr(
+            "codec_attribute_control.facodec.MAX_BATCH_PADDED_SAMPLES", 36000
+        )
     generator = torch.Generator().manual_seed(20261118)
     audio = [torch.randn(n, generator=generator) * 0.08 for n in lengths]
     # Leave garbage after each true end, including extra collator padding.
-    waveforms = torch.randn(len(lengths), max(lengths) + extra_padding, generator=generator)
+    waveforms = torch.randn(
+        len(lengths), max(lengths) + extra_padding, generator=generator
+    )
     for row, recording in zip(waveforms, audio):
         row[: recording.numel()] = recording
 
@@ -61,3 +65,28 @@ def test_pretrained_batch_parity(codec, lengths, extra_padding, monkeypatch):
         torch.testing.assert_close(
             batched.speaker[i : i + 1], ref.speaker, rtol=1e-4, atol=1e-5
         )
+
+
+def test_cached_prosody_lookup_matches_waveform_encoder(codec, monkeypatch):
+    from types import SimpleNamespace
+
+    from quick_convert.components.resources.resolution import ResolvedResource
+
+    from codec_attribute_control.system import F0ProbeSystem
+
+    monkeypatch.setattr("codec_attribute_control.system.FACodec", lambda: codec)
+    feats = FACodecContentEncoder(codec=codec).encode_waveforms(
+        torch.randn(2, 4000),
+        torch.tensor([4000, 3501]),
+    )
+    batch = SimpleNamespace(
+        resources={
+            "prosody_codes": ResolvedResource(
+                values=feats.codes[0], lengths=feats.lengths
+            ),
+        }
+    )
+    probe = F0ProbeSystem(encoder=None, head=torch.nn.Identity())
+    values, lengths = probe(batch)
+    torch.testing.assert_close(values, feats.prosody, rtol=1e-4, atol=1e-5)
+    assert torch.equal(lengths, feats.lengths)

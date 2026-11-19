@@ -4,4 +4,4 @@ resource_providers: []
 online_encoders:
   f0:
     _target_: codec_attribute_control.f0_resource.OnlineF0
-    backend: jdc
+    backend: ${f0_backend}

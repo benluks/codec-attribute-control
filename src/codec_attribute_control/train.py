@@ -27,8 +27,7 @@ def run_training(cfg):
             *cfg.f0.dataset_load,
             *(cfg.codes.dataset_load if "codes" in cfg else []),
         ]))
-        # The pitch-to-code classifier needs only cached tensors when both
-        # supervision sources are cached. Preserve audio for the F0 probe.
+        # Both heads can train from F0 and prosody code caches alone.
         if "codes" in cfg and cfg.codes.source == "cached" and not cfg.f0.online_encoders:
             load = [name for name in load if name != "audio"]
         return instantiate(

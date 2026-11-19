@@ -23,12 +23,12 @@ class OnlineF0(nn.Module):
         if not torch.all(batch.sample_rates == SAMPLE_RATE):
             raise ValueError("Online F0 requires 16 kHz audio")
         if isinstance(self.extractor, JDCF0Extractor):
-            device = batch.waveforms.device
+            device = next(self.extractor.model.parameters()).device
             lengths = batch.lengths.to(device=device, dtype=torch.long)
             # Resample the entire padded batch in one operation.
             # Native valid lengths use torchaudio's ceil(input * new / old).
             positions = torch.arange(batch.waveforms.shape[1], device=device)
-            waveforms = batch.waveforms.masked_fill(positions >= lengths[:, None], 0)
+            waveforms = batch.waveforms.to(device).masked_fill(positions >= lengths[:, None], 0)
             padded = audio_functional.resample(waveforms, SAMPLE_RATE, JDC_SAMPLE_RATE)
             native_lengths = torch.div(
                 lengths * JDC_SAMPLE_RATE + SAMPLE_RATE - 1,
@@ -57,5 +57,5 @@ class OnlineF0(nn.Module):
                                             device=batch.waveforms.device)[:, None])
         lengths = torch.tensor([x.shape[0] for x in contours],
                                dtype=torch.long, device=batch.waveforms.device)
-        return ResolvedResource(values=torch.nn.utils.rnn.pad_sequence(contours, batch_first=True),
+        return ResolvedResource(values=torch.nn.utils.rnn.pad_sequence(contours, batch_first=True, padding_value=float("nan")),
                                 lengths=lengths)

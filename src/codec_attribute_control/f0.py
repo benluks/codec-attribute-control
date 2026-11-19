@@ -29,10 +29,15 @@ def aligned_pitch(extractor, waveform: torch.Tensor, sample_rate: int, n_frames:
 
 
 def make_extractor(backend: str, *, device: str = "cpu", checkpoint_path: str | None = None):
-    if backend == "jdc":
+    if backend in ("jdc", "jdc_corrected"):
         from .extractors import JDCF0Extractor
-        return JDCF0Extractor(checkpoint_path=checkpoint_path, device=device)
+        kwargs = {"mel_sample_rate": SAMPLE_RATE} if backend == "jdc_corrected" else {}
+        return JDCF0Extractor(checkpoint_path=checkpoint_path, device=device, **kwargs)
+    if backend == "world":
+        from .extractors import WORLDF0Extractor
+
+        return WORLDF0Extractor()
     if backend == "yaapt":
         from quick_convert.components.features.f0.yaapt import YAAPTF0Extractor
         return YAAPTF0Extractor(zero_on_failure=False)
-    raise ValueError(f"F0 backend must be 'jdc' or 'yaapt', got {backend!r}")
+    raise ValueError(f"F0 backend must be 'world', 'jdc_corrected', 'jdc' or 'yaapt', got {backend!r}")
