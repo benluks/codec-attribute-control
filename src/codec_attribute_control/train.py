@@ -19,11 +19,22 @@ ConfigStore.instance().store(
 
 def run_training(cfg):
     providers = instantiate(cfg.f0.resource_providers)
-    if 'codes' in cfg:
+    if "codes" in cfg:
         providers = [*providers, *instantiate(cfg.codes.resource_providers)]
+
     def dataset(split):
-        return instantiate(cfg.dataset, splits=[split], load=list(dict.fromkeys([*cfg.f0.dataset_load, *(cfg.codes.dataset_load if 'codes' in cfg else [])])),
-                           resource_providers=providers, target_sr=16000)
+        load = list(dict.fromkeys([
+            *cfg.f0.dataset_load,
+            *(cfg.codes.dataset_load if "codes" in cfg else []),
+        ]))
+        # The pitch-to-code classifier needs only cached tensors when both
+        # supervision sources are cached. Preserve audio for the F0 probe.
+        if "codes" in cfg and cfg.codes.source == "cached" and not cfg.f0.online_encoders:
+            load = [name for name in load if name != "audio"]
+        return instantiate(
+            cfg.dataset, splits=[split], load=load,
+            resource_providers=providers, target_sr=16000,
+        )
 
     train_dataset = dataset(cfg.train_split)
     val_dataset = dataset(cfg.val_split) if cfg.get("val_split") is not None else None
