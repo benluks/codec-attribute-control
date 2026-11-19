@@ -1,0 +1,8 @@
+# Use the existing F0 probe with the frozen SSL reconstruction representation.
+# Unlike FACodec, W2V-BERT operates at 50 Hz; F0 labels are aligned in the trainer.
+source: online
+dataset_load: [audio]
+resource_providers: []
+encoder:
+  _target_: codec_attribute_control.w2vbert_reconstruction.ReconstructionW2VBertEncoder
+  checkpoint_path: ${reconstruction_checkpoint}
