@@ -8,6 +8,7 @@ f0_cache_root: ./outputs/precomputed/f0/${f0_backend}
 splits: [train-clean-100, dev-clean]
 batch_size: 8
 num_workers: 4
+pitch_workers: 1
 device: cuda
 checkpoint_path: null
 cache_key: null
@@ -18,7 +19,7 @@ dataset:
   target_sr: 16000
 
 pipeline:
-  _target_: quick_convert.pipelines.precompute_features.PrecomputeFeaturesPipeline
+  _target_: codec_attribute_control.f0_precompute_extractor.PitchPrecomputePipeline
   dataset: ${dataset}
   extractor:
     _target_: codec_attribute_control.f0_precompute_extractor.F0PrecomputeExtractor
@@ -30,6 +31,9 @@ pipeline:
   num_workers: ${num_workers}
   skip_existing: true
   cache_key: ${cache_key}
+
+run:
+  pitch_workers: ${pitch_workers}
 
 hydra:
   run:
