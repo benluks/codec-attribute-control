@@ -8,6 +8,7 @@ defaults:
 
 data_root: ???
 f0_cache_root: ./outputs/precomputed/f0/jdc
+codes_cache_root: ./outputs/precomputed/prosody_codes/facodec
 batch_size: 128
 num_workers: 24
 max_epochs: 10
