@@ -27,7 +27,9 @@ def test_unvoiced_gaps_not_interpolated():
     contour = np.array([100.0, np.nan, 200.0, 300.0])
     got = module.target_log2_f0(contour, 0.02, 8, 240, 24000)
     assert got[0] == pytest.approx(np.log2(100.0))
-    assert np.all(got[1:6] == 0.0)
+    assert np.all(got[1:4] == 0.0)
+    assert got[4] == pytest.approx(np.log2(200.0))
+    assert got[5] == pytest.approx(np.log2(250.0))
     assert got[6] == pytest.approx(np.log2(300.0))
     assert got[7] == 0.0
 
