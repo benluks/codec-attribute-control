@@ -1,22 +1,33 @@
-# SSL reconstruction identity smoke test
+# SSLR reconstruction and pitch editing
 
-This is the first inference milestone: restore the **entire** SSL reconstruction
-system from its saved Quick Convert configuration and checkpoint, then synthesize
-audio without modifying its latent features.
+Restore a trusted Quick Convert SSL reconstruction checkpoint and save the
+source reconstruction as a WAV:
 
 ```bash
-uv run --extra w2vbert reconstruct-sslr \
-  --checkpoint /path/to/quick-convert/outputs/ssl_reconstruction/hf8jdifd \
-  --source /path/to/utterance.wav \
-  --output /tmp/identity.wav \
-  --device cuda
+uv run --extra sslr reconstruct-sslr \
+  --checkpoint "$HOME/quick-convert/outputs/ssl_reconstruction/hf8jdifd" \
+  --source /path/to/utterance.flac \
+  --output /tmp/identity.wav --device cuda
 ```
 
-Use `--config /path/to/saved/config.yaml` if the checkpoint does not embed its
-inference composition. The decoder and vocoder must be configured in the saved
-system; this command does not construct a substitute vocoder.
+Use `--config /path/to/config.yaml` to override the saved system configuration.
+The command translates the legacy W2V-BERT, CAMPPlus and CosyVoice class paths
+found in older run configs. Quick Convert restores the saved decoder and
+vocoder; its model assets must be available locally or downloadable.
 
-**Important:** This does not yet load the separately trained CNN pitch probe,
-modify the latent, or measure synthesized F0. Check the identity waveform
-before proceeding. The native loader may require model assets and optional
-dependencies from the original Quick Convert configuration.
+To run inversion and render the edited latent, supply a trained
+`head=facodec_cnn target_mode=log2` probe from the same SSLR representation.
+Initialize the Amphion submodule before using the CNN head:
+
+```bash
+git submodule update --init external/Amphion
+uv run --extra sslr --extra facodec reconstruct-sslr \
+  --checkpoint "$HOME/quick-convert/outputs/ssl_reconstruction/hf8jdifd" \
+  --probe-checkpoint /path/to/probe/checkpoints/best.ckpt \
+  --source /path/to/utterance.flac \
+  --semitones 3 --output /tmp/edited.wav --device cuda
+```
+
+`--semitones` shifts the frozen probe's prediction on WORLD-voiced frames.
+The decoded waveform may realize a different shift. Use a separate F0
+measurement on the generated WAV to evaluate the edit.
