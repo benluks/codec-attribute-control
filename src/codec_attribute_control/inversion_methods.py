@@ -33,6 +33,11 @@ class ProbeAdapter:
         linear_operator: Callable | None = None,
     ):
         self.probe = probe
+        if linear_operator is None:
+            head = getattr(probe, 'head', probe)
+            getter = getattr(head, 'inversion_linear_operator', None)
+            if getter is not None and getter() is not None:
+                linear_operator = lambda latents: (getter(), None)
         self.linear_operator = linear_operator
 
     def available_methods(self):
@@ -95,26 +100,19 @@ def _linear(adapter, latents, target, valid_mask, ridge):
     with torch.no_grad():
         original = adapter.probe(latents)
         W, _ = adapter.linear_operator(latents)
-        # Support per-frame linear W [D] or [T,D], and flattened [T,T*D].
-        edited = latents.detach().clone()
-        for b in range(latents.shape[0]):
-            if W.ndim == 1:
-                A = torch.zeros((latents.shape[1], latents.shape[1], latents.shape[2]), device=latents.device, dtype=latents.dtype)
-                idx = torch.arange(latents.shape[1], device=latents.device)
-                A[idx, idx] = W
-                A = A.flatten(1)
-            elif W.ndim == 2 and W.shape == (latents.shape[1], latents.shape[2]):
-                A = torch.zeros((latents.shape[1], latents.shape[1], latents.shape[2]), device=latents.device, dtype=latents.dtype)
-                idx = torch.arange(latents.shape[1], device=latents.device)
-                A[idx, idx] = W
-                A = A.flatten(1)
-            else:
-                A = W
-            delta = _solve_rows(A[valid[b]], (target[b] - original[b])[valid[b]], ridge)
-            edited[b] += delta.reshape_as(edited[b])
+        # Exact minimum-displacement solution for independent linear frames.
+        if W.ndim != 1 or W.shape[0] != latents.shape[-1]:
+            raise ValueError("Automatic linear inversion expects a framewise [D] operator")
+        residual = torch.where(valid, target - original, 0.0)
+        scale = W.square().sum() + ridge
+        delta = residual.unsqueeze(-1) * W / scale
+        edited = latents.detach() + delta
         final = adapter.probe(edited)
-        return InversionResult(edited, original, final, (final[valid] - target[valid]).square().mean().item(), (edited - latents).square().mean().sqrt().item())
-
+        return InversionResult(
+            edited, original, final,
+            (final[valid] - target[valid]).square().mean().item(),
+            delta.square().mean().sqrt().item(),
+        )
 
 def _jacobian(adapter, latents, target, valid_mask, ridge):
     """Local regularized Jacobian step; suitable for small utterances.
