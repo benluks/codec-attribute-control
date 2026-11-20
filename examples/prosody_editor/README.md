@@ -55,3 +55,38 @@ The server loads the two models for each conversion request; this first version
 prioritizes correctness over response time. The orange realized F0 remains a
 browser estimate. Model quality and checkpoint compatibility must be validated
 on the cluster. Do not expose this endpoint publicly.
+
+## PitchFlower pretrained codec (experimental)
+
+PitchFlower uses an RVQ autoencoder, flow-based mel decoder conditioned on
+**absolute log2 F0**, and a pretrained Vocos vocoder. The adapter follows the
+[upstream inference notebook](https://github.com/diegotg2000/PitchFlower/blob/master/f0_control.ipynb),
+including its 24 kHz synthesis clock and unvoiced log-F0 value of zero.
+
+```bash
+uv sync --extra pitchflower
+uv run --extra pitchflower python examples/prosody_editor/world_server.py
+```
+
+Use the same SSH tunnel as for WORLD. Select **PitchFlower (pretrained codec)**,
+load audio, edit the blue curve, then click **Convert utterance**. PitchFlower
+and Vocos are downloaded from Hugging Face on first conversion and cached in
+memory for subsequent requests. No checkpoints are needed for this backend.
+
+The optional configuration is:
+
+```bash
+export PITCHFLOWER_DEVICE=cuda  # cpu is also supported
+export PITCHFLOWER_MODEL=diegotg343/PitchFlower
+export PITCHFLOWER_VOCODER=charactr/vocos-mel-24khz
+export PITCHFLOWER_STEPS=10
+export PITCHFLOWER_GUIDANCE=3.0
+```
+
+The browser's F0 is an approximate 80 Hz estimate, interpolated only between
+voiced points to PitchFlower's mel clock; unvoiced frames remain zero. The orange
+curve is likewise an approximate browser estimate, not a validated pitch metric.
+The server runs synthesis only on explicit conversion, never on edit release.
+
+**Licensing:** Upstream PitchFlower is licensed under CC BY-NC-SA 4.0; check its
+terms before commercial usage or redistribution.
