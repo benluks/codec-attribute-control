@@ -142,7 +142,8 @@ def _start_worker():
             "Set PITCHFLOWER_PYTHON to the Python executable in a separate "
             "PitchFlower environment (PyTorch 2.8); see editor README"
         )
-    executable = Path(interpreter).expanduser().resolve()
+    # A venv Python can be a symlink. Its launch path selects the venv.
+    executable = Path(interpreter).expanduser().absolute()
     if not executable.is_file():
         raise ValueError(f"PITCHFLOWER_PYTHON not found: {executable}")
     return subprocess.Popen(
