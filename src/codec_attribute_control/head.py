@@ -42,6 +42,12 @@ class MLPF0Head(MaskedF0RegressionHead):
         layers.append(nn.Linear(previous, 1))
         self.projection = nn.Sequential(*layers) if hidden_sizes else layers[0]
 
+    def inversion_linear_operator(self):
+        """Exact framewise operator, available only for a context-free linear head."""
+        if self.context_size != 1 or not isinstance(self.projection, nn.Linear):
+            return None
+        return self.projection.weight.detach().reshape(-1)
+
     def forward(self, features):
         if features.ndim != 3:
             raise ValueError("Expected [B,T,C] features")
