@@ -103,3 +103,15 @@ def test_worker_requires_separate_python(monkeypatch):
     monkeypatch.delenv("PITCHFLOWER_PYTHON", raising=False)
     with pytest.raises(ValueError, match="PITCHFLOWER_PYTHON"):
         module._start_worker()
+
+
+def test_pitchflower_worker_preserves_venv_symlink(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    module = backend()
+    interpreter = tmp_path / "python"
+    interpreter.symlink_to(sys.executable)
+    monkeypatch.setenv("PITCHFLOWER_PYTHON", str(interpreter))
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: argv)
+    assert module._start_worker()[0] == str(interpreter)

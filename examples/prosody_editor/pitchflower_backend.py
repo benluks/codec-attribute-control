@@ -103,15 +103,16 @@ def _synthesize_in_worker(payload):
     # Shared models (especially CUDA ones) are cached and run serially.
     with _MODEL_LOCK, torch.inference_mode():
         synth, vocos = _models(model_id, vocoder_id, device)
-        mel = synth.get_mels(waveform)
+        # The strided autoencoder can change the number of mel frames.
+        reconstructed, _, _ = synth.autoencoder(synth.get_mels(waveform))
         hop = synth.mel.spectrogram.hop_length
         model_sr = synth.mel.sample_rate
         if model_sr != SAMPLE_RATE:
             raise ValueError(f"Expected PitchFlower model at 24 kHz, got {model_sr}")
-        log_f0 = target_log2_f0(contour, frame_period, mel.shape[-1], hop, model_sr)
+        log_f0 = target_log2_f0(contour, frame_period, reconstructed.shape[-1], hop, model_sr)
         pitches = torch.from_numpy(log_f0).unsqueeze(0).to(device)
-        # Match the official notebook's synthesis entrypoint and vocoder.
-        rendered = vocos.decode(synth.reconstruct_mels(waveform, pitches, steps=steps, w=guidance))
+        refined = synth.flow_matcher.improve_mels(reconstructed, pitches, steps=steps, w=guidance)
+        rendered = vocos.decode(refined)
         if rendered.ndim != 2 or rendered.shape[0] != 1:
             raise ValueError(f"Unexpected PitchFlower audio shape {tuple(rendered.shape)}")
         output = rendered[0].detach().cpu().numpy()
@@ -142,7 +143,8 @@ def _start_worker():
             "Set PITCHFLOWER_PYTHON to the Python executable in a separate "
             "PitchFlower environment (PyTorch 2.8); see editor README"
         )
-    executable = Path(interpreter).expanduser().resolve()
+    # A venv Python can be a symlink. Its launch path selects the venv.
+    executable = Path(interpreter).expanduser().absolute()
     if not executable.is_file():
         raise ValueError(f"PITCHFLOWER_PYTHON not found: {executable}")
     return subprocess.Popen(
