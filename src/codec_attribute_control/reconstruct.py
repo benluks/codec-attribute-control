@@ -19,7 +19,8 @@ from quick_convert.utils.paths import checkpoint_run_config
 from .extractors import WORLDF0Extractor
 from .f0 import align_f0_to_feature_grid
 from .head import FACodecCNNF0Head
-from .latent_inversion import invert_pitch, shift_log2_f0
+from .inversion_methods import ProbeAdapter, invert
+from .latent_inversion import shift_log2_f0
 from .targets import f0_target
 
 
@@ -128,6 +129,7 @@ def _edit_pitch(
     target_frame_period=None,
     *,
     target_mode="log2",
+    inversion_method="adam",
 ):
     with torch.no_grad():
         content = system.get_resource(batch, "content")
@@ -190,7 +192,13 @@ def _edit_pitch(
         )
     if not torch.isfinite(target).any():
         raise ValueError("The source has no voiced frames to edit")
-    edited = invert_pitch(head, features.clone(), target, steps=steps)
+    edited = invert(
+        ProbeAdapter(head),
+        features.clone(),
+        target,
+        method=inversion_method,
+        steps=steps,
+    )
     with torch.inference_mode():
         return system.decode_features(
             edited.latents, lengths, speaker, run_vocoder=True
@@ -209,6 +217,7 @@ def reconstruct_identity(
     steps: int = 80,
     target_f0=None,
     target_frame_period: float | None = None,
+    inversion_method: str = "adam",
 ) -> Path:
     """Restore SSLR and synthesize the source, optionally editing its pitch."""
     if probe_checkpoint is None and (semitones is not None or target_f0 is not None):
@@ -251,6 +260,7 @@ def reconstruct_identity(
             target_f0,
             target_frame_period,
             target_mode=target_mode,
+            inversion_method=inversion_method,
         )
     if generation.audio is None:
         raise RuntimeError(

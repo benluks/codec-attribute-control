@@ -33,3 +33,15 @@ def test_system_head_is_automatically_unwrapped():
             self.head = MLPF0Head(input_dim=3)
     adapter = ProbeAdapter(System())
     assert available_methods(adapter)[0] == "linear"
+
+
+def test_jacobian_fits_signed_targets_and_masks_unvoiced_frames():
+    head = MLPF0Head(input_dim=2, hidden_sizes=[], context_size=1)
+    with torch.no_grad():
+        head.projection.weight.copy_(torch.tensor([[2.0, 0.0]]))
+        head.projection.bias.zero_()
+    latents = torch.zeros(1, 3, 2)
+    target = torch.tensor([[-1.0, float("nan"), 1.0]])
+    result = invert(ProbeAdapter(head), latents, target, method="jacobian")
+    assert torch.allclose(result.final_prediction, torch.tensor([[-1.0, 0.0, 1.0]]), atol=3e-4)
+    assert torch.count_nonzero(latents) == 0
