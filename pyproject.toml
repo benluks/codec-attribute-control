@@ -32,6 +32,7 @@ train-w2vbert-probe = "codec_attribute_control.train:main_w2vbert"
 train-pitch-codes = "codec_attribute_control.train_codes:main"
 precompute-codes = "codec_attribute_control.precompute_codes:main"
 precompute-f0 = "codec_attribute_control.precompute_f0:main"
+reconstruct-sslr = "codec_attribute_control.reconstruct:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.12"]
