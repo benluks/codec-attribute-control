@@ -74,7 +74,7 @@ def test_parent_uses_worker_and_preserves_edited_contour(monkeypatch):
 
     module = backend()
     expected = b"RIFFtest"
-    response = json.dumps({"wav": base64.b64encode(expected).decode()}) + "\\n"
+    response = json.dumps({"wav": base64.b64encode(expected).decode()}) + "\n"
 
     class FakeProcess:
         stdin = io.StringIO()
