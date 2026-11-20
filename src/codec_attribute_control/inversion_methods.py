@@ -104,7 +104,10 @@ def _linear(adapter, latents, target, valid_mask, ridge):
                 A[idx, idx] = W
                 A = A.flatten(1)
             elif W.ndim == 2 and W.shape == (latents.shape[1], latents.shape[2]):
-                A = torch.diag_embed(W).permute(0, 2, 1).reshape(latents.shape[1], -1)
+                A = torch.zeros((latents.shape[1], latents.shape[1], latents.shape[2]), device=latents.device, dtype=latents.dtype)
+                idx = torch.arange(latents.shape[1], device=latents.device)
+                A[idx, idx] = W
+                A = A.flatten(1)
             else:
                 A = W
             delta = _solve_rows(A[valid[b]], (target[b] - original[b])[valid[b]], ridge)
