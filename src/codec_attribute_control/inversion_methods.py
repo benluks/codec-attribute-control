@@ -130,8 +130,8 @@ def _jacobian(adapter, latents, target, valid_mask, ridge):
     for b in range(source.shape[0]):
         x = source[b].detach().requires_grad_(True)
         with torch.enable_grad():
-            def f(z):
-                return adapter.probe(z.unsqueeze(0)).squeeze(0)[valid[b]]
+            def f(z, frame_mask=valid[b]):
+                return adapter.probe(z.unsqueeze(0)).squeeze(0)[frame_mask]
             pred = f(x)
             J = torch.autograd.functional.jacobian(f, x, vectorize=True).reshape(pred.numel(), -1)
         originals.append(adapter.probe(source[b:b+1]).detach())
