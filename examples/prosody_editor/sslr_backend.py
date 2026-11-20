@@ -30,6 +30,9 @@ def synthesize_sslr(payload):
     frame_period = float(payload.get("target_frame_period", 0.0125))
     if not np.isfinite(frame_period) or not 0 < frame_period <= 0.1:
         raise ValueError("Invalid target frame period")
+    method = payload.get("inversion_method", "adam")
+    if method not in ("adam", "jacobian"):
+        raise ValueError("Choose Adam or Jacobian inversion")
     steps = int(os.environ.get("SSLR_INVERSION_STEPS", "80"))
     if not 1 <= steps <= 1000:
         raise ValueError("Invalid SSLR_INVERSION_STEPS")
@@ -41,6 +44,6 @@ def synthesize_sslr(payload):
         reconstruct_identity(
             source, checkpoint, output,
             device=device, probe_checkpoint=probe,
-            target_f0=target, target_frame_period=frame_period, steps=steps,
+            target_f0=target, target_frame_period=frame_period, steps=steps, inversion_method=method,
         )
         return output.read_bytes()

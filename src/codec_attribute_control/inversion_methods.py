@@ -124,6 +124,8 @@ def _jacobian(adapter, latents, target, valid_mask, ridge):
     valid = _mask(target, valid_mask)
     if ridge <= 0:
         raise ValueError("regularization must be positive")
+    if valid.sum(dim=1).max().item() * latents[0].numel() > 128_000_000:
+        raise ValueError("Jacobian inversion is too large for this utterance. Use a shorter clip or select Adam.")
     source = latents.detach()
     edited = source.clone()
     originals = []

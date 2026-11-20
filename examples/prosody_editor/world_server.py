@@ -117,5 +117,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     host = os.environ.get("EDITOR_HOST", "127.0.0.1")
     port = int(os.environ.get("EDITOR_PORT", "8765"))
-    print(f"Prosody editor: http://{host}:{port}", flush=True)
+    print(f"WORLD editor: http://{host}:{port}", flush=True)
     ThreadingHTTPServer((host, port), Handler).serve_forever()
