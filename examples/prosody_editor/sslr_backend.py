@@ -7,14 +7,21 @@ import numpy as np
 import soundfile as sf
 
 
+PROBE_CONFIG = {
+    "w2vbert": "F0_PROBE_CHECKPOINT",
+    "w2vbert_linear": "LINEAR_F0_PROBE_CHECKPOINT",
+}
+
+
 def synthesize_sslr(payload):
     import torch
     from codec_attribute_control.reconstruct import reconstruct_identity
 
     checkpoint = os.environ.get("SSLR_CHECKPOINT")
-    probe = os.environ.get("F0_PROBE_CHECKPOINT")
+    probe_var = PROBE_CONFIG[payload.get("backend", "w2vbert")]
+    probe = os.environ.get(probe_var)
     if not checkpoint or not probe:
-        raise ValueError("Set SSLR_CHECKPOINT and F0_PROBE_CHECKPOINT")
+        raise ValueError(f"Set SSLR_CHECKPOINT and {probe_var}")
     sr = int(payload["sample_rate"])
     audio = np.asarray(payload["audio"], dtype=np.float32)
     if not 8000 <= sr <= 96000 or audio.ndim != 1 or not 0 < audio.size <= sr * 30:

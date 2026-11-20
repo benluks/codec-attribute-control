@@ -114,3 +114,32 @@ def test_normalized_probe_rejects_semitone_shift_before_loading_system(tmp_path)
         reconstruct.reconstruct_identity(
             "source.wav", "model.ckpt", "out.wav", probe_checkpoint=probe, semitones=3
         )
+
+
+def test_loads_contextual_linear_probe_from_saved_config(tmp_path):
+    from codec_attribute_control.head import MLPF0Head
+
+    head = MLPF0Head(input_dim=3, context_size=17)
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    probe = checkpoints / "best.ckpt"
+    torch.save(
+        {"state_dict": {f"system.head.{k}": v for k, v in head.state_dict().items()}},
+        probe,
+    )
+    OmegaConf.save(
+        {
+            "head": {
+                "value": {
+                    "_target_": "codec_attribute_control.head.MLPF0Head",
+                    "input_dim": 3,
+                    "context_size": 17,
+                    "hidden_sizes": [],
+                }
+            }
+        },
+        tmp_path / "config.yaml",
+    )
+    restored = reconstruct._load_pitch_head(probe, 3, "cpu")
+    features = torch.randn(1, 8, 3)
+    torch.testing.assert_close(restored(features), head(features))

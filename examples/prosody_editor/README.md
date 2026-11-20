@@ -40,6 +40,7 @@ cluster before starting the server:
 ```bash
 export SSLR_CHECKPOINT=/path/to/outputs/ssl_reconstruction/hf8jdifd
 export F0_PROBE_CHECKPOINT=/path/to/hmts1hb9/checkpoints/best.ckpt
+export LINEAR_F0_PROBE_CHECKPOINT=/path/to/mc5bz2f3/checkpoints/best.ckpt
 export SSLR_DEVICE=cuda
 export SSLR_INVERSION_STEPS=80
 uv run --extra sslr --extra facodec --extra train python examples/prosody_editor/world_server.py
@@ -50,6 +51,11 @@ edit the blue F0 curve, then explicitly click **Convert utterance**. The server
 resamples the browser's approximately 80 Hz contour to the 50 Hz SSL feature
 clock, masks unvoiced frames, inverts the continuous latents, and
 runs the original SSLR decoder/vocoder. Nothing runs automatically on drag.
+
+Select **W2v-BERT + linear probe (cluster)** to use
+`LINEAR_F0_PROBE_CHECKPOINT`. Both options share the SSLR model.
+`mc5bz2f3` predicts absolute log2 F0 with 17 frames of context.
+Keep the probe's saved `config.yaml` next to its `checkpoints/` directory.
 
 Choose **Adam** or **Jacobian** under **Inversion**. Adam is the default.
 Jacobian uses one regularized local step and is intended for short utterances.

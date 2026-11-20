@@ -18,7 +18,7 @@ from quick_convert.utils.paths import checkpoint_run_config
 
 from .extractors import WORLDF0Extractor
 from .f0 import align_f0_to_feature_grid
-from .head import FACodecCNNF0Head
+from .head import FACodecCNNF0Head, MLPF0Head
 from .inversion_methods import ProbeAdapter, invert
 from .latent_inversion import shift_log2_f0
 from .targets import f0_target
@@ -103,10 +103,26 @@ def _probe_target_mode(checkpoint):
 
 def _load_pitch_head(checkpoint, feature_dim, device):
     path = Path(checkpoint).expanduser()
+    config = checkpoint_run_config(path)
+    head_config = OmegaConf.select(OmegaConf.load(config), "head") if config else None
+    if OmegaConf.is_dict(head_config) and "value" in head_config:
+        head_config = head_config.value
+    options = dict(head_config) if OmegaConf.is_dict(head_config) else {}
+    head_type = options.pop("_target_", "codec_attribute_control.head.FACodecCNNF0Head")
+    if options.pop("input_dim", feature_dim) != feature_dim:
+        raise ValueError("Pitch probe input dimension does not match the SSLR features")
+    if head_type in (
+        "codec_attribute_control.head.MLPF0Head",
+        "codec_attribute_control.head.LinearF0Head",
+    ):
+        head = MLPF0Head(input_dim=feature_dim, **options)
+    elif head_type == "codec_attribute_control.head.FACodecCNNF0Head":
+        head = FACodecCNNF0Head(input_dim=feature_dim, **options)
+    else:
+        raise ValueError(f"Unsupported pitch probe head: {head_type}")
     state = torch.load(path, map_location="cpu", weights_only=False, mmap=True)[
         "state_dict"
     ]
-    head = FACodecCNNF0Head(input_dim=feature_dim)
     prefix = "system.head."
     head.load_state_dict(
         {
@@ -286,7 +302,7 @@ def main() -> None:
     )
     parser.add_argument("--device", default="cpu")
     parser.add_argument(
-        "--probe-checkpoint", help="Trained absolute log2 F0 CNN probe checkpoint"
+        "--probe-checkpoint", help="Trained absolute log2 F0 probe checkpoint"
     )
     parser.add_argument(
         "--semitones", type=float, help="Pitch shift to request from the probe"
