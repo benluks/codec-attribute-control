@@ -52,7 +52,10 @@ def target_log2_f0(contour, frame_period, frames, hop_length, sample_rate=SAMPLE
     right = np.minimum(left + 1, len(contour) - 1)
     weight = np.clip(index - left, 0.0, 1.0)
     a, b = contour[left], contour[right]
-    valid = inside & np.isfinite(a) & np.isfinite(b) & (a > 0) & (b > 0)
+    valid = inside & np.isfinite(a) & (a > 0) & (
+        (np.isclose(weight, 0.0, atol=1e-9))
+        | (np.isfinite(b) & (b > 0))
+    )
     hz = np.where(valid, np.nan_to_num(a) * (1 - weight) + np.nan_to_num(b) * weight, 1.0)
     return np.where(valid, np.log2(hz), 0.0).astype(np.float32)
 
