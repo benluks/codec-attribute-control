@@ -200,10 +200,10 @@ p.onpointerdown=e=>{if(!original||e.button!==0)return;
   stroke={q,existing:true,id:existing.id,original:{...existing},before:snapshotState(),startHz:nodePitch(existing),changed:false};
   p.setPointerCapture(e.pointerId);renderNodes();return;
  }
- const t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null)return;
+ const t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null){seekPlayback(t);return;}
  const pxPerOctave=(q.H-50)/Math.log2(500/60);
- if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22)return;
- const at=Math.max(0,Math.min(origF.length-1,Math.round(t/step()))),seg=voicedSegment(at);if(!seg)return;
+ if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22){seekPlayback(t);return;}
+ const at=Math.max(0,Math.min(origF.length-1,Math.round(t/step()))),seg=voicedSegment(at);if(!seg){seekPlayback(t);return;}
  const n={id:nextId++,lo:seg.lo,hi:seg.hi,t:origF[at].t,dx:0,dy:0,width:Number($('brush').value)/1000,shape:Number($('shape').value)/100,enabled:true};
  selected=n.id;stroke={q,existing:false,node:n,before:snapshotState(),startHz:v,changed:false};
  p.setPointerCapture(e.pointerId);renderNodes();
