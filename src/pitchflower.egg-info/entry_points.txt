@@ -1,0 +1,4 @@
+[console_scripts]
+pitchflower = pitchflower.pitchflower:main
+preprocess_data = pitchflower.preprocess_data:main
+save_pretrained = pitchflower.save_pretrained:main
