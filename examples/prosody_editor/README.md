@@ -48,8 +48,13 @@ uv run --extra sslr --extra facodec --extra train python examples/prosody_editor
 Use the same SSH forwarding as above. Select **W2v-BERT + CNN probe (cluster)**,
 edit the blue F0 curve, then explicitly click **Convert utterance**. The server
 resamples the browser's approximately 80 Hz contour to the 50 Hz SSL feature
-clock, masks unvoiced frames, optimizes the continuous latents with Adam, and
+clock, masks unvoiced frames, inverts the continuous latents, and
 runs the original SSLR decoder/vocoder. Nothing runs automatically on drag.
+
+Choose **Adam** or **Jacobian** under **Inversion**. Adam is the default.
+Jacobian uses one regularized local step and is intended for short utterances.
+If the server reports that the Jacobian is too large, shorten the clip or
+select Adam. `SSLR_INVERSION_STEPS` controls Adam.
 
 The probe's saved run config selects the edit objective. For `hmts1hb9`
 (`normalized_log2`), the server standardizes the edited contour over frames
