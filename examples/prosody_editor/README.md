@@ -18,9 +18,16 @@ On your laptop:
 ssh -N -L 8765:127.0.0.1:8765 YOUR_CLUSTER_HOST
 ```
 
-Open http://127.0.0.1:8765, load the bundled OGG example (or another short
-audio file), choose **WORLD (cluster backend)**, edit the blue contour, and
-press **Convert utterance**. The output is playable with **Converted**.
+Open http://127.0.0.1:8765. The editor automatically loads the bundled
+utterance. You can also load another short audio file. Choose
+**WORLD (cluster backend)**, edit the blue contour, and press
+**Convert utterance**. The output is playable with **Converted**.
+
+The bundled utterance is `6070-86744-0004` from the
+[LibriSpeech ASR corpus](https://openslr.elda.org/12/) test-other split,
+prepared by Vassil Panayotov with assistance from Daniel Povey, licensed
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+It was transcoded from FLAC to Ogg Opus for the editor.
 
 The server binds to 127.0.0.1 by default; use SSH forwarding rather than
 exposing the endpoint to the public Internet. For compute nodes, forward via
