@@ -112,7 +112,7 @@ def _load_pitch_head(checkpoint, feature_dim, device):
     return head.to(device).eval()
 
 
-def _edit_pitch(system, batch, checkpoint, semitones, steps):
+def _edit_pitch(system, batch, checkpoint, semitones, steps, target_f0=None, target_frame_period=None):
     with torch.no_grad():
         content = system.get_resource(batch, "content")
         features, lengths, _ = system.encode_features(
@@ -134,7 +134,25 @@ def _edit_pitch(system, batch, checkpoint, semitones, steps):
             target_hz=system.online_encoders["content"].frame_hz,
             target_offset_seconds=0.0175,
         )
-        target = shift_log2_f0(head(features), semitones)
+        if target_f0 is None:
+            target = shift_log2_f0(head(features), semitones)
+        else:
+            if target_frame_period is None or target_frame_period <= 0:
+                raise ValueError('target_frame_period must be positive')
+            contour = torch.as_tensor(target_f0, dtype=features.dtype, device=features.device)
+            if contour.ndim != 1 or contour.numel() < 2:
+                raise ValueError('Expected a one-dimensional F0 contour')
+            # Browser samples F0 at 80 Hz; W2v-BERT latents are at 50 Hz.
+            # Interpolate only inside voiced regions; never bridge unvoiced gaps.
+            times = torch.arange(features.shape[1], device=features.device) / system.online_encoders['content'].frame_hz + 0.0175
+            positions = times / target_frame_period
+            left = positions.floor().long().clamp(0, contour.numel() - 1)
+            right = (left + 1).clamp(max=contour.numel() - 1)
+            weight = (positions - left).clamp(0, 1)
+            a, b = contour[left], contour[right]
+            voiced = torch.isfinite(a) & torch.isfinite(b) & (a > 0) & (b > 0)
+            hz = torch.lerp(torch.nan_to_num(a), torch.nan_to_num(b), weight)
+            target = torch.where(voiced, torch.log2(hz.clamp_min(1)), float('nan'))[None]
         target = target.masked_fill(
             ~torch.isfinite(aligned) | (aligned <= 5), float("nan")
         )
@@ -157,10 +175,14 @@ def reconstruct_identity(
     probe_checkpoint: str | Path | None = None,
     semitones: float | None = None,
     steps: int = 80,
+    target_f0=None,
+    target_frame_period: float | None = None,
 ) -> Path:
     """Restore SSLR and synthesize the source, optionally editing its pitch."""
-    if (probe_checkpoint is None) != (semitones is None):
-        raise ValueError("Provide both a probe checkpoint and a semitone shift")
+    if probe_checkpoint is None and (semitones is not None or target_f0 is not None):
+        raise ValueError('Pitch editing requires a probe checkpoint')
+    if probe_checkpoint is not None and (semitones is None) == (target_f0 is None):
+        raise ValueError('Provide exactly one of semitones or target_f0')
     if semitones is not None and not math.isfinite(semitones):
         raise ValueError("The semitone shift must be finite")
     system = _load_sslr(checkpoint, config)
@@ -183,7 +205,7 @@ def reconstruct_identity(
         with torch.inference_mode():
             generation = system(batch, run_vocoder=True).generation
     else:
-        generation = _edit_pitch(system, batch, probe_checkpoint, semitones, steps)
+        generation = _edit_pitch(system, batch, probe_checkpoint, semitones, steps, target_f0, target_frame_period)
     if generation.audio is None:
         raise RuntimeError(
             "SSLR decoder did not return waveform; verify vocoder configuration"
