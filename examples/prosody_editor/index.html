@@ -82,7 +82,7 @@ if(original&&hoverT!=null){let hz=targetAt(hoverT);if(hz!=null){let xx=x(hoverT)
 function wave(){let {g,W,H}=size(w);g.clearRect(0,0,W,H);g.fillStyle='#131b28';g.fillRect(0,0,W,H);if(!original)return;let data=original.getChannelData(0),mid=H/2;g.strokeStyle='#85a9dc';g.lineWidth=1;for(let px=0;px<W;px++){let a=Math.floor(px/W*data.length),b=Math.max(a+1,Math.floor((px+1)/W*data.length)),min=1,max=-1;for(let j=a;j<b;j+=Math.max(1,Math.floor((b-a)/30))){let v=data[j];min=Math.min(min,v);max=Math.max(max,v)}g.beginPath();g.moveTo(px,mid-max*mid*.88);g.lineTo(px,mid-min*mid*.88);g.stroke()}}
 function setOriginal(b,name){viewStart=0;viewSpan=b.duration;updateZoomLabel();original=b;converted=null;realF=[];origF=f0(b);$('filename').textContent=name;$('duration').textContent=b.duration.toFixed(2)+' s';$('playOriginal').disabled=false;$('playConverted').disabled=true;$('convert').disabled=$('backend').value==='none';reset();wave();history=[];future=[];nextId=1;$('status').textContent='Original F0 estimated. Edit the blue curve, then connect a converter or load a converted file to compare.'}
 function play(b){if(!b)return;stop();ctx.resume();source=ctx.createBufferSource();source.buffer=b;source.connect(ctx.destination);source.onended=()=>{source=null};source.start()};function stop(){if(source){try{source.stop()}catch{}source=null}}
-$('backend').onchange=()=>{$('convert').disabled=!original||$('backend').value!=='world'};
+$('backend').onchange=()=>{$('convert').disabled=!original||$('backend').value==='none'};
 $('convert').onclick=async()=>{
  if(!original||$('backend').value==='none')return;
  const button=$('convert');button.disabled=true;$('status').textContent='Running '+$('backend').selectedOptions[0].text+' conversion on the server…';
