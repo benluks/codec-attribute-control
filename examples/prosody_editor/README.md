@@ -38,11 +38,12 @@ CNN probe and SSL reconstruction decoder. Set both checkpoint locations on the
 cluster before starting the server:
 
 ```bash
+uv sync --extra sslr --extra facodec
 export SSLR_CHECKPOINT=/path/to/outputs/ssl_reconstruction/hf8jdifd
 export F0_PROBE_CHECKPOINT=/path/to/hmts1hb9/checkpoints/best.ckpt
 export SSLR_DEVICE=cuda
 export SSLR_INVERSION_STEPS=80
-uv run --extra w2vbert --extra facodec python examples/prosody_editor/world_server.py
+uv run --extra sslr --extra facodec python examples/prosody_editor/world_server.py
 ```
 
 Use the same SSH forwarding as above. Select **W2v-BERT + CNN probe (cluster)**,
