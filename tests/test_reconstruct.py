@@ -1,6 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import torch
 from omegaconf import OmegaConf
 
@@ -97,3 +98,19 @@ def test_pitch_edit_reaches_decoder_with_same_lengths_and_speaker(monkeypatch):
         sample_rates=torch.tensor([16000]),
     )
     assert reconstruct._edit_pitch(System(), batch, "probe.ckpt", 3, 4) is result
+
+
+def test_normalized_probe_rejects_semitone_shift_before_loading_system(tmp_path):
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    probe = checkpoints / "best.ckpt"
+    probe.touch()
+    OmegaConf.save(
+        {"target_mode": {"value": "normalized_log2"}}, tmp_path / "config.yaml"
+    )
+    with pytest.raises(
+        ValueError, match="Uniform semitone shifts require a log2 probe"
+    ):
+        reconstruct.reconstruct_identity(
+            "source.wav", "model.ckpt", "out.wav", probe_checkpoint=probe, semitones=3
+        )
