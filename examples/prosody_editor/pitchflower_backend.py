@@ -79,8 +79,8 @@ def _models(model_id, vocoder_id, device):
     return synth, vocos
 
 
-def synthesize_pitchflower(payload):
-    """Return a PCM WAV for the same explicit Convert action as other backends."""
+def _synthesize_in_worker(payload):
+    """Run the pretrained codec and vocoder inside the dedicated worker environment."""
     import torch
     from scipy.signal import resample_poly
     from math import gcd
@@ -120,3 +120,61 @@ def synthesize_pitchflower(payload):
     out = BytesIO()
     sf.write(out, np.clip(output, -1, 1), SAMPLE_RATE, format="WAV", subtype="PCM_16")
     return out.getvalue()
+
+
+# The main editor uses Quick Convert (torch==2.6) while PitchFlower pins
+# torch==2.8. Keep them in independent Python environments instead of trying
+# to resolve incompatible requirements into the same uv environment.
+_WORKER_PROCESS = None
+_WORKER_PROCESS_LOCK = Lock()
+
+
+def _start_worker():
+    import subprocess
+    from pathlib import Path
+
+    interpreter = os.environ.get("PITCHFLOWER_PYTHON")
+    if not interpreter:
+        raise ValueError(
+            "Set PITCHFLOWER_PYTHON to the Python executable in a separate "
+            "PitchFlower environment (PyTorch 2.8); see editor README"
+        )
+    executable = Path(interpreter).expanduser().resolve()
+    if not executable.is_file():
+        raise ValueError(f"PITCHFLOWER_PYTHON not found: {executable}")
+    return subprocess.Popen(
+        [str(executable), str(Path(__file__).with_name("pitchflower_worker.py"))],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        # Allow model logs and tracebacks to reach the editor server console,
+        # never the JSON line protocol on stdout.
+        stderr=None,
+        text=True,
+        bufsize=1,
+    )
+
+
+def synthesize_pitchflower(payload):
+    """Send conversion to a persistent isolated worker, returning WAV bytes."""
+    import base64
+    import json
+
+    global _WORKER_PROCESS
+    _request(payload)  # validate before launching an expensive process
+    with _WORKER_PROCESS_LOCK:
+        if _WORKER_PROCESS is None or _WORKER_PROCESS.poll() is not None:
+            _WORKER_PROCESS = _start_worker()
+        try:
+            _WORKER_PROCESS.stdin.write(json.dumps(payload, allow_nan=False) + "\n")
+            _WORKER_PROCESS.stdin.flush()
+            line = _WORKER_PROCESS.stdout.readline()
+            if not line:
+                raise RuntimeError("PitchFlower worker exited without a response; check server logs")
+            response = json.loads(line)
+            if "error" in response:
+                raise RuntimeError(response["error"])
+            return base64.b64decode(response["wav"], validate=True)
+        except (OSError, BrokenPipeError):
+            _WORKER_PROCESS.kill()
+            _WORKER_PROCESS = None
+            raise RuntimeError("PitchFlower worker connection failed; check server logs") from None
