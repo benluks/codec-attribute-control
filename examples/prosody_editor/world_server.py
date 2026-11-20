@@ -14,6 +14,7 @@ import numpy as np
 import soundfile as sf
 
 from sslr_backend import synthesize_sslr
+from pitchflower_backend import synthesize_pitchflower
 
 INDEX = Path(__file__).with_name("index.html")
 MAX_BYTES = 20 * 1024 * 1024
@@ -69,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
         elif urlsplit(self.path).path == "/api/health":
-            data = json.dumps({"backends": ["world"] + (["w2vbert"] if os.environ.get("SSLR_CHECKPOINT") and os.environ.get("F0_PROBE_CHECKPOINT") else [])}).encode()
+            data = json.dumps({"backends": ["world"] + (["w2vbert"] if os.environ.get("SSLR_CHECKPOINT") and os.environ.get("F0_PROBE_CHECKPOINT") else []) + ["pitchflower"]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
         else:
@@ -93,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = synthesize(payload)
             elif backend == 'w2vbert':
                 data = synthesize_sslr(payload)
+            elif backend == 'pitchflower':
+                data = synthesize_pitchflower(payload)
             else:
                 raise ValueError('Unsupported conversion backend')
         except (ValueError, KeyError, TypeError, ImportError) as exc:
