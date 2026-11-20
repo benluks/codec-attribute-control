@@ -13,6 +13,8 @@ from io import BytesIO
 import numpy as np
 import soundfile as sf
 
+from sslr_backend import synthesize_sslr
+
 INDEX = Path(__file__).with_name("index.html")
 MAX_BYTES = 20 * 1024 * 1024
 MAX_SECONDS = 30
@@ -67,7 +69,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
         elif urlsplit(self.path).path == "/api/health":
-            data = b'{"backend":"world"}'
+            data = json.dumps({"backends": ["world"] + (["w2vbert"] if os.environ.get("SSLR_CHECKPOINT") and os.environ.get("F0_PROBE_CHECKPOINT") else [])}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
         else:
@@ -86,13 +88,19 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= MAX_BYTES:
                 raise ValueError("Request too large")
             payload = json.loads(self.rfile.read(size))
-            data = synthesize(payload)
+            backend = payload.get('backend', 'world')
+            if backend == 'world':
+                data = synthesize(payload)
+            elif backend == 'w2vbert':
+                data = synthesize_sslr(payload)
+            else:
+                raise ValueError('Unsupported conversion backend')
         except (ValueError, KeyError, TypeError, ImportError) as exc:
             data = json.dumps({"error": str(exc)}).encode()
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
         except Exception as exc:
-            data = json.dumps({"error": f"WORLD synthesis failed: {exc}"}).encode()
+            data = json.dumps({"error": f"Conversion failed: {exc}"}).encode()
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
         else:
