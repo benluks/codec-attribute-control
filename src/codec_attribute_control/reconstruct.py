@@ -4,6 +4,7 @@ This deliberately does not implement pitch editing: first verify that a saved
 SSLR model can reconstruct a source utterance without latent modification.
 """
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import torch
@@ -44,7 +45,8 @@ def reconstruct_identity(
         raise TypeError(f"Expected SSL reconstruction system, got {type(system).__name__}")
     system = system.to(device).eval()
     sample_rate = system.online_encoders["content"].sample_rate
-    batch = make_audio_batch(source, sample_rate=sample_rate).to(device)
+    batch = make_audio_batch(source, sample_rate=sample_rate)
+    batch = replace(batch, waveforms=batch.waveforms.to(device), lengths=batch.lengths.to(device), sample_rates=batch.sample_rates.to(device))
     result = system(batch, run_vocoder=True)
     if result.generation.audio is None:
         raise RuntimeError("SSLR decoder did not return waveform; verify vocoder configuration")
