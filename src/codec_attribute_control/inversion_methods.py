@@ -32,9 +32,10 @@ class ProbeAdapter:
         *,
         linear_operator: Callable | None = None,
     ):
-        self.probe = probe
+        # F0ProbeSystem.forward expects an audio batch; inversion acts on its head.
+        head = getattr(probe, 'head', probe)
+        self.probe = head
         if linear_operator is None:
-            head = getattr(probe, 'head', probe)
             getter = getattr(head, 'inversion_linear_operator', None)
             if getter is not None and getter() is not None:
                 linear_operator = lambda latents: (getter(), None)
