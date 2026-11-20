@@ -6,7 +6,7 @@
 <section><div class="toolbar"><label>Conversion backend <select id="backend"><option value="none">Not connected (UI preview)</option><option value="world">WORLD (cluster backend)</option><option value="w2vbert">W2v-BERT + CNN probe (cluster)</option><option value="pitchflower">PitchFlower (pretrained codec)</option></select></label><label id="inversionOptions" hidden>Inversion <select id="inversionMethod"><option value="adam">Adam</option><option value="jacobian">Jacobian</option></select></label><button id="convert" disabled>Convert utterance</button><label class="muted">Load converted audio <input id="convertedFile" type="file" accept="audio/*"></label></div><div class="status" id="status">Load an utterance to begin. This standalone HTML supports F0 analysis and target editing. A model backend must be connected for synthesis.</div><p class="muted" id="error"></p></section>
 <p class="foot">In standalone mode, audio stays in your browser. With a synthesis backend selected, audio and the edited F0 contour are sent to the server hosting this page. Pitch extraction uses a lightweight browser autocorrelation estimator (80 Hz frame rate); for research-grade comparison, use the same validated F0 extractor on original and converted speech in the backend.</p>
 <script>
-(()=>{'use strict';const $=id=>document.getElementById(id);const p=$('pitch'),w=$('wave');let ctx=new (window.AudioContext||window.webkitAudioContext)(),original=null,converted=null,origF=[],realF=[],source=null,playbackStart=0,playbackFrame=null,playbackTime=null,demo=false;const blue='#5d9dff',gray='#9ca9bd',orange='#f5ad5a';
+(()=>{'use strict';const $=id=>document.getElementById(id);const p=$('pitch'),w=$('wave');let ctx=new (window.AudioContext||window.webkitAudioContext)(),original=null,converted=null,origF=[],realF=[],source=null,playbackStart=0,playbackFrame=null,playbackTime=null,playbackKind=null,playbackPaused=true,playbackGeneration=0,demo=false;const blue='#5d9dff',gray='#9ca9bd',orange='#f5ad5a';
 function size(c){const r=c.getBoundingClientRect(),d=devicePixelRatio||1;c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return {g:x,W:r.width,H:r.height}}
 function f0(buf){const sr=buf.sampleRate,mono=buf.getChannelData(0),hop=Math.max(1,Math.round(sr/80)),win=Math.round(sr*.045),out=[];let maxAmp=0;for(let i=0;i<mono.length;i+=100)maxAmp=Math.max(maxAmp,Math.abs(mono[i]));for(let center=0;center<mono.length;center+=hop){let start=Math.max(0,Math.min(mono.length-win,center-Math.floor(win/2))),n=Math.min(win,mono.length-start);if(n<256)break;let rms=0;for(let j=0;j<n;j+=2)rms+=mono[start+j]**2;rms=Math.sqrt(rms/(n/2));let pitch=null;if(rms>Math.max(.006,maxAmp*.035)){let best=-Infinity,lag=0,min=Math.floor(sr/450),max=Math.min(Math.floor(sr/70),Math.floor(n/2));for(let l=min;l<=max;l+=1){let dot=0,a=0,b=0;for(let j=0;j<n-l;j+=3){let x=mono[start+j],y=mono[start+j+l];dot+=x*y;a+=x*x;b+=y*y}let score=dot/Math.sqrt(a*b+1e-12);if(score>best){best=score;lag=l}}if(best>.78)pitch=sr/lag}out.push({t:center/sr,hz:pitch})}return out}
 function sample(arr,t){if(!arr.length)return null;let step=arr.length>1?arr[1].t-arr[0].t:.02,i=Math.min(arr.length-1,Math.max(0,Math.round(t/step)));return arr[i].hz}
@@ -82,9 +82,62 @@ if(playbackTime!=null&&playbackTime>=viewStart&&playbackTime<=viewStart+viewSpan
 if(original&&hoverT!=null){let hz=targetAt(hoverT);if(hz!=null){let xx=x(hoverT),yy=y(hz);g.strokeStyle='rgba(93,157,255,.25)';g.beginPath();g.arc(xx,yy,Math.max(10,(Number($('brush').value)/1000/viewSpan)*(W-L-R)/2),0,Math.PI*2);g.stroke();g.beginPath();g.arc(xx,yy,3,0,2*Math.PI);g.fillStyle=blue;g.fill()}}}
 function wave(){let {g,W,H}=size(w);g.clearRect(0,0,W,H);g.fillStyle='#131b28';g.fillRect(0,0,W,H);if(!original)return;let data=original.getChannelData(0),mid=H/2;g.strokeStyle='#85a9dc';g.lineWidth=1;for(let px=0;px<W;px++){let a=Math.floor(px/W*data.length),b=Math.max(a+1,Math.floor((px+1)/W*data.length)),min=1,max=-1;for(let j=a;j<b;j+=Math.max(1,Math.floor((b-a)/30))){let v=data[j];min=Math.min(min,v);max=Math.max(max,v)}g.beginPath();g.moveTo(px,mid-max*mid*.88);g.lineTo(px,mid-min*mid*.88);g.stroke()}}
 function setOriginal(b,name){stop();viewStart=0;viewSpan=b.duration;updateZoomLabel();original=b;converted=null;realF=[];origF=f0(b);$('filename').textContent=name;$('duration').textContent=b.duration.toFixed(2)+' s';$('playOriginal').disabled=false;$('playConverted').disabled=true;$('convert').disabled=$('backend').value==='none';reset();wave();history=[];future=[];nextId=1;$('status').textContent='Original F0 estimated. Edit the blue curve, then connect a converter or load a converted file to compare.'}
-function tickPlayback(){if(!source)return;playbackTime=Math.min(source.buffer.duration,Math.max(0,ctx.currentTime-playbackStart));draw();playbackFrame=requestAnimationFrame(tickPlayback)}
-function stop(){if(playbackFrame!=null){cancelAnimationFrame(playbackFrame);playbackFrame=null}if(source){const old=source;source=null;old.onended=null;try{old.stop()}catch{}old.disconnect()}playbackTime=null;draw()}
-async function play(b){if(!b)return;stop();await ctx.resume();const next=ctx.createBufferSource();source=next;next.buffer=b;next.connect(ctx.destination);next.onended=()=>{if(source!==next)return;source=null;if(playbackFrame!=null)cancelAnimationFrame(playbackFrame);playbackFrame=null;playbackTime=null;draw();next.disconnect()};playbackStart=ctx.currentTime;playbackTime=0;next.start();tickPlayback()}
+function updatePlaybackButtons(){
+ $('playOriginal').textContent=playbackKind==='original'&&!playbackPaused?'❚❚ Original':'▶ Original';
+ $('playConverted').textContent=playbackKind==='converted'&&!playbackPaused?'❚❚ Converted':'▶ Converted';
+}
+function tickPlayback(){
+ if(!source)return;
+ playbackTime=Math.min(source.buffer.duration,Math.max(0,ctx.currentTime-playbackStart));
+ draw();playbackFrame=requestAnimationFrame(tickPlayback);
+}
+function releaseSource(){
+ if(playbackFrame!=null){cancelAnimationFrame(playbackFrame);playbackFrame=null}
+ if(source){const old=source;source=null;old.onended=null;try{old.stop()}catch{}old.disconnect()}
+}
+function stop(){
+ ++playbackGeneration;releaseSource();playbackTime=null;playbackKind=null;playbackPaused=true;
+ updatePlaybackButtons();draw();
+}
+function pause(){
+ if(!source)return;
+ playbackTime=Math.min(source.buffer.duration,Math.max(0,ctx.currentTime-playbackStart));
+ ++playbackGeneration;releaseSource();playbackPaused=true;updatePlaybackButtons();draw();
+}
+async function startPlayback(){
+ const kind=playbackKind,b=kind==='original'?original:converted;
+ if(!b)return;
+ const generation=++playbackGeneration;
+ await ctx.resume();
+ if(generation!==playbackGeneration||playbackKind!==kind||!playbackPaused)return;
+ releaseSource();
+ const offset=Math.max(0,Math.min(playbackTime??0,b.duration));
+ if(offset>=b.duration){playbackTime=0}
+ const next=ctx.createBufferSource();next.buffer=b;next.connect(ctx.destination);source=next;
+ playbackStart=ctx.currentTime-(playbackTime??0);playbackPaused=false;
+ next.onended=()=>{
+  if(source!==next)return;
+  releaseSource();playbackTime=null;playbackKind=null;playbackPaused=true;updatePlaybackButtons();draw();
+ };
+ next.start(0,playbackTime??0);updatePlaybackButtons();tickPlayback();
+}
+function togglePlayback(kind){
+ const b=kind==='original'?original:converted;if(!b)return;
+ if(playbackKind===kind){if(!playbackPaused){pause();return}}
+ else{++playbackGeneration;releaseSource();playbackKind=kind;playbackPaused=true;playbackTime=0}
+ updatePlaybackButtons();startPlayback();
+}
+function seekPlayback(t){
+ if(!original)return;
+ const duration=(playbackKind==='converted'?converted:original)?.duration??original.duration;
+ playbackTime=Math.max(0,Math.min(t,duration));
+ if(!playbackPaused&&source){
+  ++playbackGeneration;releaseSource();playbackPaused=true;
+  if(playbackTime<duration)startPlayback();
+  else updatePlaybackButtons();
+ }
+ draw();
+}
 $('backend').onchange=()=>{$('convert').disabled=!original||$('backend').value==='none';$('inversionOptions').hidden=$('backend').value!=='w2vbert'};
 $('convert').onclick=async()=>{
  if(!original||$('backend').value==='none')return;
@@ -102,7 +155,7 @@ $('convert').onclick=async()=>{
 };
 $('file').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{setOriginal(await ctx.decodeAudioData(await f.arrayBuffer()),f.name)}catch(err){$('status').textContent='Could not decode audio: '+err.message}};
 $('convertedFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{converted=await ctx.decodeAudioData(await f.arrayBuffer());realF=f0(converted);$('playConverted').disabled=false;draw();let err=[],dur=Math.min(original?.duration||0,converted.duration);for(let t=0;t<dur;t+=.02){let r=sample(realF,t),v=targetAt(t);if(r!=null&&v!=null)err.push(Math.abs(12*Math.log2(r/v)))}$('error').textContent=err.length?'Mean absolute pitch error (voiced, time-aligned assumption): '+(err.reduce((a,b)=>a+b,0)/err.length).toFixed(2)+' semitones':'No overlapping voiced F0 frames found.';$('status').textContent='Converted audio loaded; orange contour is measured from that file. Check timing alignment before interpreting the error.'}catch(err){$('status').textContent='Could not decode converted audio: '+err.message}};
-$('playOriginal').onclick=()=>play(original);$('playConverted').onclick=()=>play(converted);$('stop').onclick=stop;$('reset').onclick=reset;
+$('playOriginal').onclick=()=>togglePlayback('original');$('playConverted').onclick=()=>togglePlayback('converted');$('stop').onclick=stop;$('reset').onclick=reset;
 $('undo').onclick=()=>{if(!history.length)return;future.push(snapshotState());restoreState(history.pop())};
 $('redo').onclick=()=>{if(!future.length)return;history.push(snapshotState());restoreState(future.pop())};
 $('deleteNode').onclick=removeSelected;
@@ -147,10 +200,10 @@ p.onpointerdown=e=>{if(!original||e.button!==0)return;
   stroke={q,existing:true,id:existing.id,original:{...existing},before:snapshotState(),startHz:nodePitch(existing),changed:false};
   p.setPointerCapture(e.pointerId);renderNodes();return;
  }
- const t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null)return;
+ const t=timeAt(q),v=targetAt(t),hz=hzAt(q);if(v==null){seekPlayback(t);return;}
  const pxPerOctave=(q.H-50)/Math.log2(500/60);
- if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22)return;
- const at=Math.max(0,Math.min(origF.length-1,Math.round(t/step()))),seg=voicedSegment(at);if(!seg)return;
+ if(Math.abs(Math.log2(hz/v)*pxPerOctave)>22){seekPlayback(t);return;}
+ const at=Math.max(0,Math.min(origF.length-1,Math.round(t/step()))),seg=voicedSegment(at);if(!seg){seekPlayback(t);return;}
  const n={id:nextId++,lo:seg.lo,hi:seg.hi,t:origF[at].t,dx:0,dy:0,width:Number($('brush').value)/1000,shape:Number($('shape').value)/100,enabled:true};
  selected=n.id;stroke={q,existing:false,node:n,before:snapshotState(),startHz:v,changed:false};
  p.setPointerCapture(e.pointerId);renderNodes();
@@ -177,6 +230,7 @@ p.onpointermove=e=>{if(!original)return;
  }else draw();
 };
 p.onpointerup=e=>{if(!stroke)return;
+ if(!stroke.changed)seekPlayback(timeAt(pos(e)));
  if(stroke.changed){
   // One history entry per completed gesture, not per pointer movement.
   history.push(stroke.before);if(history.length>100)history.shift();future=[];
