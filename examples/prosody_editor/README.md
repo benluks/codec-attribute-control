@@ -63,15 +63,26 @@ PitchFlower uses an RVQ autoencoder, flow-based mel decoder conditioned on
 [upstream inference notebook](https://github.com/diegotg2000/PitchFlower/blob/master/f0_control.ipynb),
 including its 24 kHz synthesis clock and unvoiced log-F0 value of zero.
 
+Quick Convert pins PyTorch 2.6 while upstream PitchFlower pins 2.8.
+To avoid mixing them, create a separate PitchFlower environment **once**,
+and point the regular editor server at that Python executable:
+
 ```bash
-uv sync --extra pitchflower
-uv run --extra pitchflower python examples/prosody_editor/world_server.py
+uv venv --python 3.11 .venv-pitchflower
+uv pip install --python .venv-pitchflower/bin/python \
+  'git+https://github.com/diegotg2000/PitchFlower.git'
+export PITCHFLOWER_PYTHON="$(pwd)/.venv-pitchflower/bin/python"
+
+# Editor dependencies (separate main environment):
+uv sync --extra facodec
+uv run --extra facodec python examples/prosody_editor/world_server.py
 ```
 
 Use the same SSH tunnel as for WORLD. Select **PitchFlower (pretrained codec)**,
-load audio, edit the blue curve, then click **Convert utterance**. PitchFlower
+load audio, edit the blue curve, then click **Convert utterance**. The editor
+starts a separate persistent PitchFlower worker on first use. PitchFlower
 and Vocos are downloaded from Hugging Face on first conversion and cached in
-memory for subsequent requests. No checkpoints are needed for this backend.
+memory for subsequent requests. No manually provided checkpoints are needed.
 
 The optional configuration is:
 
